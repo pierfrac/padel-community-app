@@ -1,13 +1,16 @@
-/// Compile-time identity used only by the four-session local test launcher.
+/// Compile-time identities used only by the four-session local test launcher.
 ///
-/// These values are not authentication or authorization. Production roles must
-/// be verified from trusted credentials, not from client-controlled defines.
+/// The admin preview must authenticate with Google. The other three users are
+/// synthetic test identities. None of these compile-time settings is a
+/// production authorization mechanism.
 abstract final class TestIdentity {
   static const role = String.fromEnvironment('PADEL_TEST_ROLE');
   static const userId = String.fromEnvironment('PADEL_TEST_USER_ID');
+  static const googleClientId =
+      String.fromEnvironment('PADEL_GOOGLE_CLIENT_ID');
 
-  static bool get isEnabled =>
-      userId.isNotEmpty && (role == 'admin' || role == 'player');
+  static bool get isGoogleAdminPreview => role == 'google-admin';
 
-  static bool get isAdmin => role == 'admin';
+  static bool get isSimulatedPlayer =>
+      role == 'player' && userId.isNotEmpty;
 }
