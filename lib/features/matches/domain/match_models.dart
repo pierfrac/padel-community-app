@@ -86,7 +86,8 @@ class MatchRequest {
 
   static const playerCapacity = 4;
 
-  int get vacantPlaces => (playerCapacity - participants.length).clamp(0, 4);
+  int get vacantPlaces =>
+      participants.length >= playerCapacity ? 0 : playerCapacity - participants.length;
 
   bool get isFull => participants.length == playerCapacity;
 
