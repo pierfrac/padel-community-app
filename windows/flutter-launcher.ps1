@@ -364,12 +364,11 @@ function Install-Flutter{
   $freeAfter=Get-FreeSpaceGB $SdkParent
   Write-Log "SDK Flutter verificato. Ingombro SDK stimato: $sdkSize GB. Spazio libero residuo: $freeAfter GB."
 }
-function Get-FreeLoopbackPort([int]$StartPort=7357,[int]$EndPort=7399){
+function Get-FreeLoopbackPort([int]$StartPort=7357,[int]$EndPort=7399,[int]$SeedPort=7357){
   if($StartPort -gt $EndPort){throw 'Intervallo di porte non valido.'}
   $count=$EndPort-$StartPort+1
   for($offset=0;$offset -lt $count;$offset++){
-    $candidate=$StartPort+$offset
-    if($candidate -gt $EndPort){$candidate=$StartPort+(($candidate-$StartPort)%$count)}
+    $candidate=$StartPort+((($SeedPort-$StartPort)+$offset)%$count)
     $listener=$null
     try{
       $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,$candidate)
@@ -466,7 +465,7 @@ try{
     'web' {
       Prepare-Web
       $portSeed=Get-Random -Minimum 7357 -Maximum 7400
-      $Port=Get-FreeLoopbackPort $portSeed 7399
+      $Port=Get-FreeLoopbackPort 7357 7399 $portSeed
       $url="http://127.0.0.1:$Port"
       Write-Log "Porta libera selezionata per l'anteprima: $Port"
       Write-Log 'Apriro il browser solo quando main.dart.js sara servito come JavaScript, non quando risponde soltanto la porta TCP.'
