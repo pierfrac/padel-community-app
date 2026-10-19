@@ -1,0 +1,33 @@
+name: PADEL ZIP
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package clean source ZIP
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Prepare source bundle
+        shell: bash
+        run: |
+          mkdir -p dist/PADEL
+          git archive HEAD | tar -x -C dist/PADEL
+
+      - name: Publish PADEL.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: PADEL
+          path: dist/PADEL/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
