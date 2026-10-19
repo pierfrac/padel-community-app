@@ -413,6 +413,7 @@ function Open-BrowserWhenWebReady([string]$TargetUrl,[int]$TargetPort,[string]$L
         }
       }catch{
         # Flutter may still be compiling or the dev server may not be ready.
+        if($_.Exception.Response){try{$_.Exception.Response.Close()}catch{}}
       }finally{
         if($rootResponse){try{$rootResponse.Close()}catch{}}
         if($scriptResponse){try{$scriptResponse.Close()}catch{}}
