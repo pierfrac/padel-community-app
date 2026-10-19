@@ -8,4 +8,4 @@ if errorlevel 1 (
   echo.
   echo Operazione non riuscita. Vedi logs\flutter-setup.log
 )
-if /I "%ACTION%"=="web" pause
+pause
