@@ -5,10 +5,12 @@ on:
     branches:
       - develop
     paths:
+      - 'windows/*.ps1'
       - 'windows/**/*.ps1'
       - '.github/workflows/windows-launcher-check.yml'
   pull_request:
     paths:
+      - 'windows/*.ps1'
       - 'windows/**/*.ps1'
       - '.github/workflows/windows-launcher-check.yml'
   workflow_dispatch:
