@@ -364,6 +364,63 @@ function Install-Flutter{
   $freeAfter=Get-FreeSpaceGB $SdkParent
   Write-Log "SDK Flutter verificato. Ingombro SDK stimato: $sdkSize GB. Spazio libero residuo: $freeAfter GB."
 }
+function Get-FreeLoopbackPort([int]$StartPort=7357,[int]$EndPort=7399){
+  for($candidate=$StartPort;$candidate -le $EndPort;$candidate++){
+    $listener=$null
+    try{
+      $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,$candidate)
+      $listener.Start()
+      return $candidate
+    }catch{
+      # Port is unavailable; try the next local port.
+    }finally{
+      if($listener){try{$listener.Stop()}catch{}}
+    }
+  }
+  throw "Nessuna porta libera trovata tra $StartPort e $EndPort per l'anteprima Web."
+}
+function Open-BrowserWhenWebReady([string]$TargetUrl,[int]$TargetPort,[string]$LogPath){
+  Start-Job -ArgumentList $TargetUrl,$TargetPort,$LogPath -ScriptBlock {
+    param($url,$port,$logPath)
+    for($attempt=0;$attempt -lt 180;$attempt++){
+      $rootResponse=$null
+      $scriptResponse=$null
+      try{
+        $rootRequest=[Net.HttpWebRequest]::Create($url+'/')
+        $rootRequest.Timeout=2500
+        $rootRequest.ReadWriteTimeout=2500
+        $rootRequest.Headers['Cache-Control']='no-cache'
+        $rootResponse=$rootRequest.GetResponse()
+        $rootStatus=[int]$rootResponse.StatusCode
+        $rootResponse.Close()
+        $rootResponse=$null
+
+        if($rootStatus -ge 200 -and $rootStatus -lt 400){
+          $scriptRequest=[Net.HttpWebRequest]::Create($url+'/main.dart.js')
+          $scriptRequest.Timeout=2500
+          $scriptRequest.ReadWriteTimeout=2500
+          $scriptRequest.Headers['Cache-Control']='no-cache'
+          $scriptResponse=$scriptRequest.GetResponse()
+          $mime=[string]$scriptResponse.ContentType
+          $scriptResponse.Close()
+          $scriptResponse=$null
+          if($mime -match '(?i)(javascript|ecmascript)'){
+            Add-Content -LiteralPath $logPath -Encoding UTF8 -Value ("[{0}] main.dart.js pronto (Content-Type: {1}); apro il browser su {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),$mime,$url)
+            Start-Process $url
+            return
+          }
+        }
+      }catch{
+        # Flutter may still be compiling or the dev server may not be ready.
+      }finally{
+        if($rootResponse){try{$rootResponse.Close()}catch{}}
+        if($scriptResponse){try{$scriptResponse.Close()}catch{}}
+      }
+      Start-Sleep -Seconds 1
+    }
+    Add-Content -LiteralPath $logPath -Encoding UTF8 -Value ("[{0}] ERRORE: il server non ha restituito main.dart.js con MIME JavaScript entro 180 secondi. Verificare la console del comando flutter run e riprovare." -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
+  } | Out-Null
+}
 function Ensure-WebPlatform{
   $webIndex=Join-Path $Root 'web\index.html'
   if(Test-Path -LiteralPath $webIndex){
@@ -406,16 +463,12 @@ try{
     'setup' { Prepare-Web; Write-Log 'Setup completato. Premi Avvia anteprima nel pannello.' }
     'web' {
       Prepare-Web
+      $Port=Get-FreeLoopbackPort 7357 7399
       $url="http://127.0.0.1:$Port"
-      Start-Job -ArgumentList $url,$Port -ScriptBlock {
-        param($targetUrl,$targetPort)
-        for($i=0;$i -lt 120;$i++){
-          $client=New-Object System.Net.Sockets.TcpClient
-          try{$client.Connect('127.0.0.1',[int]$targetPort);$client.Close();Start-Process $targetUrl;return}
-          catch{$client.Close();Start-Sleep -Seconds 1}
-        }
-      }|Out-Null
-      Write-Log "Anteprima Web: $url"
+      Write-Log "Porta libera selezionata per l'anteprima: $Port"
+      Write-Log 'Apriro il browser solo quando main.dart.js sara servito come JavaScript, non quando risponde soltanto la porta TCP.'
+      Open-BrowserWhenWebReady $url $Port $LogFile
+      Write-Log "Anteprima Web in avvio: $url"
       Invoke-Flutter @('run','-d','web-server','--web-hostname','127.0.0.1','--web-port',"$Port")
     }
     'build' { Prepare-Web;Invoke-Flutter @('build','web');Write-Log "Build pronta: $Root\build\web" }
