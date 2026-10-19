@@ -25,9 +25,10 @@ Prima di scaricare, il launcher controlla lo spazio libero e, quando il server c
 
 ## Pannello
 
-- Start sessione 1 / Stop 1 e Start sessione 2 / Stop 2: gestiscono due anteprime indipendenti su porte diverse.
+- Le sessioni 1, 2, 3 e 4 hanno ciascuna i pulsanti Start e Stop e vengono servite su porte locali distinte.
 - Ogni sessione usa una copia di lavoro separata e log dedicati; SDK Flutter e cache Pub vengono condivisi per evitare di riscaricarli.
-- Fermare una sessione non interrompe l'altra. Chiudendo il pannello, entrambe le sessioni gestite vengono arrestate.
+- Fermare una sessione non interrompe le altre. Chiudendo il pannello, tutte le sessioni gestite vengono arrestate.
+- Le quattro sessioni permettono di provare contemporaneamente quattro istanze dell'interfaccia; non equivalgono ancora a quattro account reali né forniscono sincronizzazione condivisa, che devono essere implementati nella app.
 - Prepara ambiente: prepara SDK, cache Web e dipendenze senza avviare l'app.
 - Diagnostica: esegue `flutter doctor`; gli avvisi Android/Visual Studio non impediscono da soli l'anteprima Web.
 - Strumenti avanzati: Verifica tutto, Build Web, Analisi codice, Test e Formatta codice.
