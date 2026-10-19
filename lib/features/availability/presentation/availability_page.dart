@@ -6,7 +6,7 @@ class AvailabilityPage extends StatefulWidget {
   State<AvailabilityPage> createState() => _AvailabilityPageState();
 }
 class _AvailabilityPageState extends State<AvailabilityPage> {
-  final Set<int> _days = {1,3,5};
+  final Set<int> _days = {0,2,4};
   RangeValues _hours = const RangeValues(18,21);
   bool _repeat = true;
   @override
