@@ -4,7 +4,10 @@ param(
   [string]$Action = 'web',
   [string]$ProjectRoot,
   [int]$RequestedPort = 0,
-  [string]$LogPath
+  [string]$LogPath,
+  [ValidateSet('admin','player')]
+  [string]$TestRole = 'player',
+  [string]$TestUserId = ''
 )
 $ErrorActionPreference='Stop'
 $DefaultRoot=Split-Path $PSScriptRoot -Parent
@@ -515,7 +518,13 @@ try{
       Write-Log 'Apriro il browser solo quando main.dart.js sara servito come JavaScript, non quando risponde soltanto la porta TCP.'
       Open-BrowserWhenWebReady $url $Port $LogFile
       Write-Log "Anteprima Web in avvio: $url"
-      Invoke-Flutter @('run','-d','web-server','--web-hostname','127.0.0.1','--web-port',"$Port")
+      $runArguments=@('run','-d','web-server','--web-hostname','127.0.0.1','--web-port',"$Port")
+      if(-not [string]::IsNullOrWhiteSpace($TestUserId)){
+        $runArguments+=("--dart-define=PADEL_TEST_ROLE={0}" -f $TestRole)
+        $runArguments+=("--dart-define=PADEL_TEST_USER_ID={0}" -f $TestUserId)
+        Write-Log ("Identita di test locale attiva: ruolo {0}, utente {1}. Non equivale ad autenticazione reale." -f $TestRole,$TestUserId)
+      }
+      Invoke-Flutter $runArguments
     }
     'build' { Prepare-Web;Invoke-Flutter @('build','web');Write-Log "Build pronta: $Root\build\web" }
     'format' { Run-Format }
