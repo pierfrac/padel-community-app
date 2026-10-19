@@ -43,74 +43,253 @@ function Get-DirectorySizeGB([string]$Path){
   if(-not(Test-Path $Path)){return 0}
   try{$sum=(Get-ChildItem -LiteralPath $Path -Force -File -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum;return [math]::Round(([double]$sum/1GB),2)}catch{return -1}
 }
+function Test-FlutterArchive([string]$Path,[string]$ExpectedSha256){
+  if(-not (Test-Path -LiteralPath $Path) -or -not $ExpectedSha256){return $false}
+  try{
+    $actual=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    if($actual -ne $ExpectedSha256.ToLowerInvariant()){return $false}
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive=[System.IO.Compression.ZipFile]::OpenRead($Path)
+    try{$entry=$archive.GetEntry('flutter/bin/flutter.bat');return ($null -ne $entry)}
+    finally{$archive.Dispose()}
+  }catch{return $false}
+}
 function Install-Flutter{
-  if(Test-Path $Flutter){Write-Log "SDK Flutter gia presente: $FlutterRoot";return}
+  if(Test-Path $Flutter){
+    Write-Log "SDK Flutter gia presente: $FlutterRoot"
+    return
+  }
   New-Item -ItemType Directory -Force -Path $SdkParent | Out-Null
   $free=Get-FreeSpaceGB $SdkParent
-  if($free -ge 0 -and $free -lt $MinimumFreeGB){throw "Spazio insufficiente in $SdkParent : disponibili $free GB, richiesti almeno $MinimumFreeGB GB. Cambia disco dal pannello prima di continuare."}
-  if($free -ge 0){Write-Log "Spazio libero prima dell'installazione: $free GB. Controllo prudenziale: almeno $MinimumFreeGB GB."}
+  if($free -ge 0 -and $free -lt $MinimumFreeGB){
+    throw "Spazio insufficiente in $SdkParent : disponibili $free GB, richiesti almeno $MinimumFreeGB GB. Cambia disco dal pannello prima di continuare."
+  }
+  if($free -ge 0){Write-Log "Spazio libero prima dell'installazione: $free GB."}
+
   $manifestUrl='https://storage.googleapis.com/flutter_infra_release/releases/releases_windows.json'
   Write-Log 'Cerco la versione stable ufficiale di Flutter per Windows.'
   $manifest=Invoke-RestMethod -Uri $manifestUrl -TimeoutSec 60
-  $hash=$manifest.current_release.stable
-  $release=$manifest.releases|Where-Object{$_.hash -eq $hash}|Select-Object -First 1
-  if(-not $release){$release=$manifest.releases|Where-Object{$_.channel -eq 'stable'}|Sort-Object release_date -Descending|Select-Object -First 1}
-  if(-not $release -or -not $release.archive){throw 'Impossibile individuare il pacchetto Flutter stable nel manifest ufficiale.'}
-  $archiveUrl=([string]$manifest.base_url).TrimEnd('/')+'/'+$release.archive
-  $zipPath=Join-Path $SdkParent 'flutter-windows-stable.zip'
-  Write-Log "Versione selezionata: $($release.version)"
-  Write-Log "Destinazione persistente: $SdkParent"
-  if(Test-Path $zipPath){
-    $zipValid=$false
-    try{
-      Add-Type -AssemblyName System.IO.Compression.FileSystem
-      $archive=[System.IO.Compression.ZipFile]::OpenRead($zipPath)
-      $archive.Dispose()
-      $zipValid=$true
-    }catch{$zipValid=$false}
-    if(-not $zipValid){Write-Log 'Archivio precedente incompleto o non valido: lo scarico di nuovo.';Remove-Item $zipPath -Force -ErrorAction SilentlyContinue}
+  $hash=[string]$manifest.current_release.stable
+  $release=$manifest.releases|Where-Object{$_.hash -eq $hash -and $_.channel -eq 'stable'}|Select-Object -First 1
+  if(-not $release){throw 'Impossibile individuare la release stable corrente nel manifest ufficiale.'}
+  if(-not $release.archive -or [string]$release.sha256 -notmatch '^[A-Fa-f0-9]{64}
+  Invoke-Flutter @('config','--enable-web')
+  Invoke-Flutter @('precache','--web')
+  Invoke-Flutter @('pub','get')
+}
+function Run-Format{
+  Write-Log 'Formatto i file Dart in lib e test.'
+  & $Dart format (Join-Path $Root 'lib') (Join-Path $Root 'test')
+  if($LASTEXITCODE -ne 0){throw "dart format ha restituito il codice $LASTEXITCODE."}
+}
+try{
+  if($Action -eq 'clean'){
+    if(Test-Path (Join-Path $Root 'build')){Remove-Item (Join-Path $Root 'build') -Recurse -Force}
+    if(Test-Path (Join-Path $Root '.dart_tool')){Remove-Item (Join-Path $Root '.dart_tool') -Recurse -Force}
+    Write-Log 'Cache di progetto rimossa. SDK e cache persistenti sono stati conservati.'
+    exit 0
   }
-  if(-not (Test-Path $zipPath)){
-    $partialPath=$zipPath+'.part'
-    Remove-Item -LiteralPath $partialPath -Force -ErrorAction SilentlyContinue
-    $expected=-1
-    try{$head=[Net.HttpWebRequest]::Create($archiveUrl);$head.Method='HEAD';$head.Timeout=20000;$response=$head.GetResponse();$expected=$response.ContentLength;$response.Close()}catch{}
-    if($expected -gt 0){
-      $zipGB=[math]::Round($expected/1GB,2)
-      Write-Log "Dimensione archivio dichiarata dal server: $zipGB GB."
-      $free=Get-FreeSpaceGB $SdkParent
-      $needed=[math]::Ceiling(($expected*2.5)/1GB)
-      if($free -ge 0 -and $free -lt $needed){throw "Spazio insufficiente: archivio stimato $zipGB GB, disponibili $free GB. Servono circa $needed GB per download ed estrazione. Cambia destinazione e riprova."}
-    }else{Write-Log 'Il server non ha dichiarato la dimensione del file; controllo spazio prudenziale gia eseguito.'}
-    Write-Log 'Download Flutter in file temporaneo. Non chiudere la finestra.'
-    $request=[Net.HttpWebRequest]::Create($archiveUrl);$request.Timeout= [System.Threading.Timeout]::Infinite;$request.ReadWriteTimeout=[System.Threading.Timeout]::Infinite
-    $response=$request.GetResponse()
-    try{
-      $expectedStream=$response.ContentLength
-      $inputStream=$response.GetResponseStream()
-      $outputStream=New-Object IO.FileStream($partialPath,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::None)
-      try{
-        $buffer=New-Object byte[] (1MB);[long]$received=0;$lastLog=0
-        while(($read=$inputStream.Read($buffer,0,$buffer.Length)) -gt 0){
-          $outputStream.Write($buffer,0,$read);$received+=$read
-          if(($received-$lastLog) -ge 50MB){$mb=[math]::Round($received/1MB);if($expectedStream -gt 0){$pct=[math]::Round(100*$received/$expectedStream,1);Write-Log "Download: $mb MB / $([math]::Round($expectedStream/1MB)) MB ($pct%)."}else{Write-Log "Download: $mb MB ricevuti."};$lastLog=$received}
+  Install-Flutter
+  switch($Action){
+    'setup' { Prepare-Web; Write-Log 'Setup completato. Premi Avvia anteprima nel pannello.' }
+    'web' {
+      Prepare-Web
+      $url="http://127.0.0.1:$Port"
+      Start-Job -ArgumentList $url,$Port -ScriptBlock {
+        param($targetUrl,$targetPort)
+        for($i=0;$i -lt 120;$i++){
+          $client=New-Object System.Net.Sockets.TcpClient
+          try{$client.Connect('127.0.0.1',[int]$targetPort);$client.Close();Start-Process $targetUrl;return}
+          catch{$client.Close();Start-Sleep -Seconds 1}
         }
-      }finally{$outputStream.Dispose();$inputStream.Dispose()}
-    }finally{$response.Close()}
-    if($expected -gt 0 -and (Get-Item $partialPath).Length -ne $expected){throw "Download incompleto: ricevuti $((Get-Item $partialPath).Length) byte, attesi $expected. Il file temporaneo non verra installato; al prossimo tentativo verra rimosso e scaricato di nuovo."}
-    Move-Item -LiteralPath $partialPath -Destination $zipPath -Force
-    Write-Log "Download completato: $([math]::Round((Get-Item $zipPath).Length/1GB,2)) GB."
-  }else{Write-Log 'Archivio ZIP valido gia presente: provo a riutilizzarlo.'}
-  Write-Log "Dimensione archivio da estrarre: $([math]::Round((Get-Item $zipPath).Length/1GB,2)) GB."
-  Write-Log 'Estrazione SDK. Il file ZIP verra eliminato dopo una verifica riuscita.'
-  Expand-Archive -LiteralPath $zipPath -DestinationPath $SdkParent -Force
-  if(-not (Test-Path $Flutter)){throw "Estrazione incompleta: non trovo $Flutter. L'archivio e stato conservato per il recupero."}
+      }|Out-Null
+      Write-Log "Anteprima Web: $url"
+      Invoke-Flutter @('run','-d','web-server','--web-hostname','127.0.0.1','--web-port',"$Port")
+    }
+    'build' { Prepare-Web;Invoke-Flutter @('build','web');Write-Log "Build pronta: $Root\build\web" }
+    'format' { Run-Format }
+    'analyze' { Invoke-Flutter @('pub','get');Invoke-Flutter @('analyze') }
+    'test' { Invoke-Flutter @('pub','get');Invoke-Flutter @('test') }
+    'check' { Prepare-Web;Run-Format;Invoke-Flutter @('analyze');Invoke-Flutter @('test');Invoke-Flutter @('build','web');Write-Log "Controlli completati. Build Web: $Root\build\web" }
+    'doctor' { & $Flutter doctor -v;if($LASTEXITCODE -ne 0){throw "flutter doctor ha restituito il codice $LASTEXITCODE."} }
+  }
+}catch{
+  Write-Log ('ERRORE: '+$_.Exception.Message)
+  Write-Output "Setup non riuscito. Apri il pannello Padel e consulta: $LogFile"
+  exit 1
+}
+){
+    throw 'Il manifest ufficiale non contiene archivio e checksum SHA-256 validi.'
+  }
+
+  $expectedSha256=([string]$release.sha256).ToLowerInvariant()
+  $archiveUrl=([string]$manifest.base_url).TrimEnd('/')+'/'+[string]$release.archive
+  $zipPath=Join-Path $SdkParent ("flutter-windows-{0}-stable.zip" -f $release.version)
+  $partialPath=$zipPath+'.part'
+  $legacyZip=Join-Path $SdkParent 'flutter-windows-stable.zip'
+  Write-Log "Versione stable selezionata: $($release.version)"
+  Write-Log "Archivio ufficiale: $archiveUrl"
+  Write-Log "Destinazione persistente: $SdkParent"
+  Write-Log "Checksum SHA-256 atteso: $expectedSha256"
+
+  # Compatibilita con la precedente versione del launcher, che usava un nome ZIP generico.
+  if(-not (Test-Path -LiteralPath $zipPath) -and (Test-Path -LiteralPath $legacyZip)){
+    $legacyValid=Test-FlutterArchive $legacyZip $expectedSha256
+    if($legacyValid){
+      Move-Item -LiteralPath $legacyZip -Destination $zipPath -Force
+      Write-Log 'Archivio generico precedente verificato e riutilizzato.'
+    }else{
+      Write-Log 'Archivio generico precedente non corrispondente alla release corrente: non verra installato.'
+      try{
+        $lock=[System.IO.File]::Open($legacyZip,[System.IO.FileMode]::Open,[System.IO.FileAccess]::ReadWrite,[System.IO.FileShare]::None)
+        $lock.Dispose()
+        Remove-Item -LiteralPath $legacyZip -Force
+        Write-Log 'Archivio obsoleto rimosso per evitare di occupare spazio inutilmente.'
+      }catch{
+        throw "Il vecchio archivio $legacyZip sembra ancora in uso. Interrompi la vecchia installazione e riprova."
+      }
+    }
+  }
+
+  $archiveValid=$false
+  if(Test-Path -LiteralPath $zipPath){
+    Write-Log 'Verifico checksum e struttura dello ZIP gia presente.'
+    $archiveValid=Test-FlutterArchive $zipPath $expectedSha256
+    if(-not $archiveValid){
+      Write-Log 'Lo ZIP esistente non corrisponde alla release ufficiale o e incompleto: lo elimino.'
+      Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+  if(-not $archiveValid){
+    $expectedLength=-1
+    try{
+      $head=[Net.HttpWebRequest]::Create($archiveUrl)
+      $head.Method='HEAD'
+      $head.Timeout=20000
+      $head.AllowAutoRedirect=$true
+      $responseHead=$head.GetResponse()
+      $expectedLength=$responseHead.ContentLength
+      $responseHead.Close()
+    }catch{
+      Write-Log 'Il server non ha fornito la dimensione con HEAD; usero il checksum ufficiale per validare il download.'
+    }
+
+    if($expectedLength -gt 0){
+      $zipGB=[math]::Round($expectedLength/1GB,2)
+      Write-Log "Dimensione archivio compresso dichiarata: $zipGB GB."
+      $free=Get-FreeSpaceGB $SdkParent
+      $needed=[math]::Max($MinimumFreeGB,[math]::Ceiling(($expectedLength*3)/1GB))
+      if($free -ge 0 -and $free -lt $needed){
+        throw "Spazio insufficiente: ZIP compresso $zipGB GB, disponibili $free GB, stima prudenziale richiesta $needed GB. Cambia destinazione dal pannello."
+      }
+    }else{
+      Write-Log "Spazio libero disponibile: $free GB. Procedo senza stima della dimensione, usando SHA-256 per controllare l'integrita."
+    }
+
+    $offset=0L
+    if(Test-Path -LiteralPath $partialPath){
+      $offset=(Get-Item -LiteralPath $partialPath).Length
+      if($expectedLength -gt 0 -and $offset -ge $expectedLength){
+        Write-Log 'File parziale gia della dimensione attesa: verifico il checksum prima di riscaricare.'
+        if((Get-FileHash -LiteralPath $partialPath -Algorithm SHA256).Hash.ToLowerInvariant() -eq $expectedSha256){
+          Move-Item -LiteralPath $partialPath -Destination $zipPath -Force
+          $archiveValid=Test-FlutterArchive $zipPath $expectedSha256
+        }else{
+          Remove-Item -LiteralPath $partialPath -Force
+          $offset=0L
+        }
+      }
+    }
+
+    if(-not $archiveValid -and -not (Test-Path -LiteralPath $zipPath)){
+      Write-Log 'Avvio download dell'archivio ufficiale. Il file resta nella cartella runtime, non in TEMP.'
+      if($offset -gt 0){Write-Log "Riprendo il download dal byte $offset."}
+      $request=[Net.HttpWebRequest]::Create($archiveUrl)
+      $request.Timeout=[System.Threading.Timeout]::Infinite
+      $request.ReadWriteTimeout=[System.Threading.Timeout]::Infinite
+      $request.AllowAutoRedirect=$true
+      if($offset -gt 0){$request.AddRange([long]$offset)}
+      $response=$request.GetResponse()
+      try{
+        $append=($offset -gt 0 -and [int]$response.StatusCode -eq 206)
+        if($offset -gt 0 -and -not $append){
+          Write-Log 'Il server non supporta la ripresa per questo download: riparto dal byte zero.'
+          $offset=0L
+        }
+        $mode=if($append){[IO.FileMode]::Append}else{[IO.FileMode]::Create}
+        [long]$received=$offset
+        $totalLength=$expectedLength
+        if($totalLength -le 0 -and $response.ContentLength -gt 0){
+          $totalLength=$response.ContentLength
+          if($append){$totalLength+=$offset}
+        }
+        $inputStream=$response.GetResponseStream()
+        $outputStream=New-Object IO.FileStream($partialPath,$mode,[IO.FileAccess]::Write,[IO.FileShare]::None)
+        try{
+          $buffer=New-Object byte[] (1MB)
+          [long]$lastLog=$received
+          while(($read=$inputStream.Read($buffer,0,$buffer.Length)) -gt 0){
+            $outputStream.Write($buffer,0,$read)
+            $received+=$read
+            if(($received-$lastLog) -ge 25MB){
+              $mb=[math]::Round($received/1MB,1)
+              if($totalLength -gt 0){
+                $pct=[math]::Min(100,[math]::Round(100*$received/$totalLength,1))
+                Write-Log "Download: $mb MB / $([math]::Round($totalLength/1MB,1)) MB ($pct%)."
+              }else{
+                Write-Log "Download: $mb MB ricevuti."
+              }
+              $lastLog=$received
+            }
+          }
+        }finally{
+          $outputStream.Dispose()
+          $inputStream.Dispose()
+        }
+      }finally{$response.Close()}
+
+      if($expectedLength -gt 0 -and (Get-Item -LiteralPath $partialPath).Length -ne $expectedLength){
+        throw "Download incompleto: ricevuti $((Get-Item -LiteralPath $partialPath).Length) byte, attesi $expectedLength. Il file resta in .part e il prossimo tentativo proverra a riprendere dal punto raggiunto."
+      }
+      Write-Log 'Download terminato. Verifico checksum SHA-256 ufficiale...'
+      $downloadHash=(Get-FileHash -LiteralPath $partialPath -Algorithm SHA256).Hash.ToLowerInvariant()
+      if($downloadHash -ne $expectedSha256){
+        Remove-Item -LiteralPath $partialPath -Force -ErrorAction SilentlyContinue
+        throw "Il checksum SHA-256 del download non corrisponde al manifest ufficiale. Il file incompleto/corrotto e stato eliminato; premi di nuovo l'azione per riscaricarlo."
+      }
+      Move-Item -LiteralPath $partialPath -Destination $zipPath -Force
+      $archiveValid=Test-FlutterArchive $zipPath $expectedSha256
+      if(-not $archiveValid){
+        Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+        throw 'Lo ZIP scaricato supera il checksum ma non contiene flutter/bin/flutter.bat. Pacchetto non installato.'
+      }
+      Write-Log "Download e verifica completati: $([math]::Round((Get-Item -LiteralPath $zipPath).Length/1GB,2)) GB."
+    }
+  }else{
+    Write-Log 'Archivio ZIP corrispondente alla release corrente: riutilizzo dopo checksum verificato.'
+  }
+
+  if(-not (Test-Path -LiteralPath $zipPath)){throw 'Archivio Flutter non disponibile dopo il download/verifica.'}
+  Write-Log "Estrazione SDK nella cartella persistente: $SdkParent"
+  Write-Log 'Non chiudere il pannello durante l'estrazione.'
+  $tar=Get-Command tar.exe -ErrorAction SilentlyContinue
+  if($tar){
+    & $tar.Source -xf $zipPath -C $SdkParent
+    if($LASTEXITCODE -ne 0){throw "tar.exe non e riuscito a estrarre l'archivio (codice $LASTEXITCODE). Lo ZIP verificato e stato conservato per riprovare."}
+  }else{
+    Expand-Archive -LiteralPath $zipPath -DestinationPath $SdkParent -Force
+  }
+  if(-not (Test-Path -LiteralPath $Flutter)){
+    throw "Estrazione incompleta: non trovo $Flutter. Lo ZIP verificato e stato conservato per riprovare."
+  }
   Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
   Invoke-Flutter @('--version')
   $sdkSize=Get-DirectorySizeGB $FlutterRoot
   $freeAfter=Get-FreeSpaceGB $SdkParent
-  Write-Log "SDK Flutter estratto correttamente. Ingombro SDK stimato: $sdkSize GB. Spazio libero residuo: $freeAfter GB."
+  Write-Log "SDK Flutter verificato. Ingombro SDK stimato: $sdkSize GB. Spazio libero residuo: $freeAfter GB."
 }
+
 function Prepare-Web{
   Invoke-Flutter @('config','--enable-web')
   Invoke-Flutter @('precache','--web')
