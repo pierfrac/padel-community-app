@@ -154,6 +154,7 @@ function Refresh-Log{
  if($script:Proc -and $script:Proc.HasExited){
   $script:Proc.WaitForExit();$code=$script:Proc.ExitCode;$script:Proc=$null;if($null -eq $code){$code=0}
   foreach($b in $script:ButtonList){$b.Enabled=$true}
+  $advancedToggle.Enabled=$true
   if($code -eq 0){$statusText.Text='Operazione completata.';Add-PanelLog '[panel] Operazione completata.'}
   else{$statusText.Text="Operazione terminata con errore (codice $code). Apri il log per i dettagli.";Add-PanelLog "[panel] ERRORE: exit code $code"}
  }
@@ -181,6 +182,14 @@ function Refresh-Log{
 $timer=New-Object System.Windows.Forms.Timer;$timer.Interval=700;$timer.Add_Tick({Refresh-Log});$timer.Start()
 function Invoke-Action([string]$action){
  if($script:Proc -and -not $script:Proc.HasExited){return}
+ if($action -eq 'setup'){
+  $activeSessions=@(@('1','2') | Where-Object {$session=$script:Sessions[$_];$session.Proc -and -not $session.Proc.HasExited})
+  if($activeSessions.Count -gt 0){
+    $statusText.Text='Ferma le sessioni attive prima di modificare o preparare l’ambiente.'
+    Add-PanelLog '[panel] Prepara ambiente non avviato: prima ferma le sessioni attive.'
+    return
+  }
+ }
  if(-not(Test-Path $SettingsFile)){if(-not(Show-StorageWizard)){return}}
  $spath.Text=[string]$S.FlutterRoot
  if(Has-Flutter ([string]$S.FlutterRoot)){$statusText.Text='Flutter gia presente: riutilizzo SDK e cache.'}else{$statusText.Text='Flutter non trovato: download nella posizione scelta. Puo richiedere diversi GB.'}
