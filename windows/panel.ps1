@@ -52,41 +52,55 @@ $statusText=New-Object System.Windows.Forms.Label;$statusText.Text='Pronto. Il r
 $script:ButtonList=@()
 $script:SessionStartButtons=@{}
 $script:SessionStopButtons=@{}
-$buttons=New-Object System.Windows.Forms.FlowLayoutPanel
-$buttons.SetBounds(24,306,876,48);$buttons.Anchor='Top,Left,Right';$buttons.BackColor=$navy;$buttons.WrapContents=$false
-function Add-SessionButton([string]$label,[string]$sessionId,[string]$kind,[bool]$primary=$false){
-  $b=New-Object System.Windows.Forms.Button
-  $b.Text=$label;$b.Size=New-Object System.Drawing.Size(164,40);$b.Margin='0,0,10,4';$b.FlatStyle='Flat';$b.FlatAppearance.BorderSize=0
-  if($primary){$b.BackColor=$blue;$b.ForeColor=[System.Drawing.Color]::White}else{$b.BackColor=$panel;$b.ForeColor=$ink}
-  if($kind -eq 'start'){
-    $b.Add_Click({Start-Session $sessionId}.GetNewClosure())
-    $script:SessionStartButtons[$sessionId]=$b
-  }else{
-    $b.Enabled=$false
-    $b.Add_Click({Stop-Session $sessionId}.GetNewClosure())
-    $script:SessionStopButtons[$sessionId]=$b
-  }
-  $buttons.Controls.Add($b)
-}
-Add-SessionButton 'Start sessione 1' '1' 'start' $true
-Add-SessionButton 'Stop 1' '1' 'stop'
-Add-SessionButton 'Start sessione 2' '2' 'start' $true
-Add-SessionButton 'Stop 2' '2' 'stop'
-$form.Controls.Add($buttons)
+$script:SessionStatusLabels=@{}
+$sessionPanel=New-Object System.Windows.Forms.Panel
+$sessionPanel.SetBounds(24,306,876,104);$sessionPanel.Anchor='Top,Left,Right';$sessionPanel.BackColor=$navy
 
+for($n=1;$n -le 4;$n++){
+  $id=[string]$n
+  $column=if($n % 2 -eq 1){0}else{440}
+  $row=if($n -le 2){0}else{54}
+  $card=New-Object System.Windows.Forms.Panel
+  $card.SetBounds($column,$row,430,48);$card.BackColor=$panel
+
+  $title=New-Object System.Windows.Forms.Label
+  $title.Text=("SESSIONE {0}" -f $id);$title.Font=New-Object System.Drawing.Font('Segoe UI Semibold',9)
+  $title.ForeColor=$ink;$title.SetBounds(9,4,120,17)
+
+  $state=New-Object System.Windows.Forms.Label
+  $state.Text='Ferma';$state.Font=New-Object System.Drawing.Font('Segoe UI',8)
+  $state.ForeColor=$muted;$state.SetBounds(9,23,230,18);$state.AutoEllipsis=$true
+  $script:SessionStatusLabels[$id]=$state
+
+  $start=New-Object System.Windows.Forms.Button
+  $start.Text='Start';$start.SetBounds(250,7,82,34);$start.FlatStyle='Flat';$start.FlatAppearance.BorderSize=0
+  $start.BackColor=$blue;$start.ForeColor=[System.Drawing.Color]::White
+  $start.Add_Click({Start-Session $id}.GetNewClosure())
+  $script:SessionStartButtons[$id]=$start
+
+  $stop=New-Object System.Windows.Forms.Button
+  $stop.Text='Stop';$stop.SetBounds(340,7,78,34);$stop.FlatStyle='Flat';$stop.FlatAppearance.BorderSize=0
+  $stop.BackColor=$navy;$stop.ForeColor=$ink;$stop.Enabled=$false
+  $stop.Add_Click({Stop-Session $id}.GetNewClosure())
+  $script:SessionStopButtons[$id]=$stop
+
+  $card.Controls.AddRange(@($title,$state,$start,$stop))
+  $sessionPanel.Controls.Add($card)
+}
+$form.Controls.Add($sessionPanel)
 $secondaryButtons=New-Object System.Windows.Forms.FlowLayoutPanel
-$secondaryButtons.SetBounds(24,360,876,48);$secondaryButtons.Anchor='Top,Left,Right';$secondaryButtons.BackColor=$navy;$secondaryButtons.WrapContents=$false
+$secondaryButtons.SetBounds(24,420,876,44);$secondaryButtons.Anchor='Top,Left,Right';$secondaryButtons.BackColor=$navy;$secondaryButtons.WrapContents=$false
 $advancedButtons=New-Object System.Windows.Forms.FlowLayoutPanel
-$advancedButtons.SetBounds(24,414,876,48);$advancedButtons.Anchor='Top,Left,Right';$advancedButtons.BackColor=$navy;$advancedButtons.WrapContents=$true;$advancedButtons.Visible=$false
+$advancedButtons.SetBounds(24,468,876,44);$advancedButtons.Anchor='Top,Left,Right';$advancedButtons.BackColor=$navy;$advancedButtons.WrapContents=$true;$advancedButtons.Visible=$false
 function Add-ActionButton([string]$label,[string]$action,[System.Windows.Forms.Control]$targetPanel,[bool]$primary=$false){
-  $b=New-Object System.Windows.Forms.Button;$b.Text=$label;$b.Tag=$action;$b.Size=New-Object System.Drawing.Size(164,40);$b.Margin='0,0,10,4';$b.FlatStyle='Flat';$b.FlatAppearance.BorderSize=0
+  $b=New-Object System.Windows.Forms.Button;$b.Text=$label;$b.Tag=$action;$b.Size=New-Object System.Drawing.Size(158,36);$b.Margin='0,0,10,4';$b.FlatStyle='Flat';$b.FlatAppearance.BorderSize=0
   if($primary){$b.BackColor=$blue;$b.ForeColor=[System.Drawing.Color]::White}else{$b.BackColor=$panel;$b.ForeColor=$ink}
   $actionName=$action;$b.Add_Click({Invoke-Action $actionName}.GetNewClosure());$targetPanel.Controls.Add($b);$script:ButtonList+=$b
 }
 Add-ActionButton 'Prepara ambiente' 'setup' $secondaryButtons
 Add-ActionButton 'Diagnostica' 'doctor' $secondaryButtons
 $advancedToggle=New-Object System.Windows.Forms.Button
-$advancedToggle.Text='Strumenti avanzati >';$advancedToggle.Size=New-Object System.Drawing.Size(164,40);$advancedToggle.Margin='0,0,10,4';$advancedToggle.FlatStyle='Flat';$advancedToggle.FlatAppearance.BorderSize=0;$advancedToggle.BackColor=$panel;$advancedToggle.ForeColor=$muted
+$advancedToggle.Text='Strumenti avanzati >';$advancedToggle.Size=New-Object System.Drawing.Size(158,36);$advancedToggle.Margin='0,0,10,4';$advancedToggle.FlatStyle='Flat';$advancedToggle.FlatAppearance.BorderSize=0;$advancedToggle.BackColor=$panel;$advancedToggle.ForeColor=$muted
 $secondaryButtons.Controls.Add($advancedToggle)
 Add-ActionButton 'Verifica tutto' 'check' $advancedButtons
 Add-ActionButton 'Build Web' 'build' $advancedButtons
@@ -99,26 +113,27 @@ function Add-LinkButton($label,$handler){$b=New-Object System.Windows.Forms.Butt
 Add-LinkButton 'Apri cartella runtime' { $p=Split-Path ([string]$S.FlutterRoot) -Parent;if(-not(Test-Path $p)){New-Item -ItemType Directory -Force -Path $p|Out-Null};Start-Process explorer.exe $p }
 Add-LinkButton 'Apri log' { if(Test-Path $LogFile){Start-Process notepad.exe $LogFile}else{[System.Windows.Forms.MessageBox]::Show('Nessun log creato ancora.','Padel Community')|Out-Null} }
 Add-LinkButton 'Apri repository' { Start-Process explorer.exe $Root };$form.Controls.Add($bottom)
-$logbox=New-Object System.Windows.Forms.RichTextBox;$logbox.SetBounds(24,420,876,214);$logbox.Anchor='Top,Bottom,Left,Right';$logbox.ReadOnly=$true;$logbox.BackColor=[System.Drawing.Color]::FromArgb(10,15,24);$logbox.ForeColor=$ink;$logbox.Font=New-Object System.Drawing.Font('Consolas',9);$logbox.BorderStyle='FixedSingle';$form.Controls.Add($logbox)
+$logbox=New-Object System.Windows.Forms.RichTextBox;$logbox.SetBounds(24,468,876,166);$logbox.Anchor='Top,Bottom,Left,Right';$logbox.ReadOnly=$true;$logbox.BackColor=[System.Drawing.Color]::FromArgb(10,15,24);$logbox.ForeColor=$ink;$logbox.Font=New-Object System.Drawing.Font('Consolas',9);$logbox.BorderStyle='FixedSingle';$form.Controls.Add($logbox)
 $advancedToggle.Add_Click({
   $advancedButtons.Visible=-not $advancedButtons.Visible
   if($advancedButtons.Visible){
     $advancedToggle.Text='Nascondi strumenti'
-    $logbox.SetBounds(24,468,876,166)
+    $logbox.SetBounds(24,516,876,118)
   }else{
     $advancedToggle.Text='Strumenti avanzati >'
-    $logbox.SetBounds(24,420,876,214)
+    $logbox.SetBounds(24,468,876,166)
   }
 }.GetNewClosure())
 $footer=New-Object System.Windows.Forms.Label;$footer.Text='Runtime e log restano fuori dalla cartella Git.';$footer.ForeColor=$muted;$footer.SetBounds(26,640,700,20);$footer.Anchor='Bottom,Left';$form.Controls.Add($footer)
 $script:Proc=$null;$script:Positions=@{};$script:Sessions=@{}
 foreach($f in @($LogFile,$OutFile,$ErrFile)){$script:Positions[$f]=0}
-foreach($id in @('1','2')){
+foreach($id in @('1','2','3','4')){
   $sessionData=Join-Path $DataRoot ("sessions\session-{0}" -f $id)
   $script:Sessions[$id]=@{
     Id=$id
     Proc=$null
     Port=0
+    StatusLabel=$script:SessionStatusLabels[$id]
     Workspace=(Join-Path $sessionData 'workspace')
     OutFile=(Join-Path $sessionData 'session.stdout.log')
     ErrFile=(Join-Path $sessionData 'session.stderr.log')
@@ -158,17 +173,27 @@ function Refresh-Log{
   if($code -eq 0){$statusText.Text='Operazione completata.';Add-PanelLog '[panel] Operazione completata.'}
   else{$statusText.Text="Operazione terminata con errore (codice $code). Apri il log per i dettagli.";Add-PanelLog "[panel] ERRORE: exit code $code"}
  }
- foreach($id in @('1','2')){
+ foreach($id in @('1','2','3','4')){
   $session=$script:Sessions[$id]
   Read-NewLines $session.OutFile ("[sessione {0}] " -f $id) $session.Positions
   Read-NewLines $session.ErrFile ("[sessione {0} stderr] " -f $id) $session.Positions
+  if($session.Proc -and -not $session.Proc.HasExited -and $session.Port -gt 0 -and $session.StatusLabel.Text -like 'Avvio*' -and (Test-Path -LiteralPath $session.LogFile)){
+    try{
+      $tail=Get-Content -LiteralPath $session.LogFile -Tail 8 -ErrorAction SilentlyContinue
+      if(($tail -join "`n") -match 'main\.dart\.js pronto'){
+        $session.StatusLabel.Text=("Attiva - porta {0}" -f $session.Port)
+      }
+    }catch{}
+  }
   if($session.Proc -and $session.Proc.HasExited){
     $session.Proc.WaitForExit()
     $code=$session.Proc.ExitCode
     $session.Proc=$null
+    $session.Port=0
     $script:SessionStartButtons[$id].Enabled=$true
     $script:SessionStopButtons[$id].Enabled=$false
-    $script:SessionStopButtons[$id].Text=("Stop {0}" -f $id)
+    $session.StatusLabel.Text=if($code -eq 0){'Terminata'}else{'Errore'}
+    $session.StatusLabel.ForeColor=if($code -eq 0){$muted}else{[System.Drawing.Color]::FromArgb(255,126,126)}
     if($code -eq 0){
       $statusText.Text=("Sessione {0} terminata." -f $id)
       Add-PanelLog ("[panel] Sessione {0} terminata." -f $id)
@@ -183,7 +208,7 @@ $timer=New-Object System.Windows.Forms.Timer;$timer.Interval=700;$timer.Add_Tick
 function Invoke-Action([string]$action){
  if($script:Proc -and -not $script:Proc.HasExited){return}
  if($action -eq 'setup'){
-  $activeSessions=@(@('1','2') | Where-Object {$session=$script:Sessions[$_];$session.Proc -and -not $session.Proc.HasExited})
+  $activeSessions=@(@('1','2','3','4') | Where-Object {$session=$script:Sessions[$_];$session.Proc -and -not $session.Proc.HasExited})
   if($activeSessions.Count -gt 0){
     $statusText.Text='Ferma le sessioni attive prima di modificare o preparare l'ambiente.'
     Add-PanelLog '[panel] Prepara ambiente non avviato: prima ferma le sessioni attive.'
@@ -211,7 +236,7 @@ function Invoke-Action([string]$action){
 function Find-SessionPort{
   $first=7357;$last=7399;$count=$last-$first+1;$seed=Get-Random -Minimum $first -Maximum ($last+1)
   $reservedPorts=@()
-  foreach($sessionId in @('1','2')){
+  foreach($sessionId in @('1','2','3','4')){
     $existing=$script:Sessions[$sessionId]
     if($existing -and $existing.Proc -and -not $existing.Proc.HasExited -and $existing.Port -gt 0){
       $reservedPorts+=[int]$existing.Port
@@ -272,13 +297,18 @@ function Start-Session([string]$id){
     $session.Port=$port
     $script:SessionStartButtons[$id].Enabled=$false
     $script:SessionStopButtons[$id].Enabled=$true
-    $script:SessionStopButtons[$id].Text=("Stop {0} ({1})" -f $id,$port)
+    $script:SessionStopButtons[$id].Text='Stop'
+    $session.StatusLabel.Text=("Avvio - porta {0}" -f $port)
+    $session.StatusLabel.ForeColor=$green
     $statusText.Text=("Sessione {0} in avvio su http://127.0.0.1:{1}" -f $id,$port)
     Add-PanelLog ("[panel] Sessione {0} partita sulla porta {1}." -f $id,$port)
   }catch{
     $session.Proc=$null
+    $session.Port=0
     $script:SessionStartButtons[$id].Enabled=$true
     $script:SessionStopButtons[$id].Enabled=$false
+    $session.StatusLabel.Text='Errore avvio'
+    $session.StatusLabel.ForeColor=[System.Drawing.Color]::FromArgb(255,126,126)
     $statusText.Text=("Avvio sessione {0} non riuscito." -f $id)
     Add-PanelLog ("[panel] ERRORE sessione {0}: {1}" -f $id,$_.Exception.Message)
   }
@@ -287,9 +317,11 @@ function Stop-Session([string]$id){
   $session=$script:Sessions[$id]
   if(-not $session.Proc -or $session.Proc.HasExited){
     $session.Proc=$null
+    $session.Port=0
     $script:SessionStartButtons[$id].Enabled=$true
     $script:SessionStopButtons[$id].Enabled=$false
-    $script:SessionStopButtons[$id].Text=("Stop {0}" -f $id)
+    $session.StatusLabel.Text='Ferma'
+    $session.StatusLabel.ForeColor=$muted
     return
   }
   Add-PanelLog ("[panel] Arresto sessione {0} sulla porta {1}..." -f $id,$session.Port)
@@ -300,9 +332,11 @@ function Stop-Session([string]$id){
     Read-NewLines $session.OutFile ("[sessione {0}] " -f $id) $session.Positions
     Read-NewLines $session.ErrFile ("[sessione {0} stderr] " -f $id) $session.Positions
     $session.Proc=$null
+    $session.Port=0
     $script:SessionStartButtons[$id].Enabled=$true
     $script:SessionStopButtons[$id].Enabled=$false
-    $script:SessionStopButtons[$id].Text=("Stop {0}" -f $id)
+    $session.StatusLabel.Text='Ferma'
+    $session.StatusLabel.ForeColor=$muted
     $statusText.Text=("Sessione {0} arrestata." -f $id)
     Add-PanelLog ("[panel] Sessione {0} arrestata." -f $id)
   }catch{
@@ -313,7 +347,7 @@ function Stop-Session([string]$id){
 $change.Add_Click({if(Show-StorageWizard){$spath.Text=[string]$S.FlutterRoot;$statusText.Text='Posizione salvata. Il prossimo avvio usera questo percorso.'}})
 $form.Add_Shown({if(-not(Test-Path $SettingsFile)){if(Show-StorageWizard){$spath.Text=[string]$S.FlutterRoot}};if(Test-Path $LogFile){Add-PanelLog 'Log precedente disponibile. Le nuove righe appariranno qui.'}})
 $form.Add_FormClosing({
-  foreach($id in @('1','2')){Stop-Session $id}
+  foreach($id in @('1','2','3','4')){Stop-Session $id}
   if($script:Proc -and -not $script:Proc.HasExited){
     try{
       $taskkill=Join-Path $env:SystemRoot 'System32\taskkill.exe'
