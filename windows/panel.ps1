@@ -56,6 +56,7 @@ function Add-ActionButton([string]$label,[string]$action,[bool]$primary=$false){
   $actionName=$action;$b.Add_Click({Invoke-Action $actionName}.GetNewClosure());$buttons.Controls.Add($b);$script:ButtonList+=$b
 }
 Add-ActionButton '>  Avvia anteprima' 'web' $true;Add-ActionButton 'Prepara ambiente' 'setup';Add-ActionButton 'Verifica tutto' 'check';Add-ActionButton 'Build Web' 'build';Add-ActionButton 'Analisi codice' 'analyze';Add-ActionButton 'Test' 'test';Add-ActionButton 'Formatta codice' 'format';Add-ActionButton 'Diagnostica' 'doctor'
+$form.Controls.Add($buttons)
 $bottom=New-Object System.Windows.Forms.FlowLayoutPanel;$bottom.Dock='Bottom';$bottom.Height=44;$bottom.Padding='18,5,10,5';$bottom.BackColor=$panel
 function Add-LinkButton($label,$handler){$b=New-Object System.Windows.Forms.Button;$b.Text=$label;$b.AutoSize=$true;$b.FlatStyle='Flat';$b.BackColor=$panel;$b.ForeColor=$muted;$b.Add_Click($handler);$bottom.Controls.Add($b)}
 Add-LinkButton 'Apri cartella runtime' { $p=Split-Path ([string]$S.FlutterRoot) -Parent;if(-not(Test-Path $p)){New-Item -ItemType Directory -Force -Path $p|Out-Null};Start-Process explorer.exe $p }
