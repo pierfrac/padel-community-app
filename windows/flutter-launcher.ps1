@@ -1,10 +1,16 @@
 param(
   [Parameter(Position = 0)]
   [ValidateSet('setup','web','build','analyze','test','check','format','doctor','clean')]
-  [string]$Action = 'web'
+  [string]$Action = 'web',
+  [string]$ProjectRoot,
+  [int]$RequestedPort = 0,
+  [string]$LogPath
 )
 $ErrorActionPreference='Stop'
-$Root=Split-Path $PSScriptRoot -Parent
+$DefaultRoot=Split-Path $PSScriptRoot -Parent
+$Root=if([string]::IsNullOrWhiteSpace($ProjectRoot)){$DefaultRoot}else{[IO.Path]::GetFullPath($ProjectRoot)}
+if(-not (Test-Path -LiteralPath $Root -PathType Container)){throw "Cartella progetto non trovata: $Root"}
+if($RequestedPort -ne 0 -and ($RequestedPort -lt 1024 -or $RequestedPort -gt 65535)){throw "Porta richiesta non valida: $RequestedPort"}
 $DataRoot=Join-Path $env:LOCALAPPDATA 'PadelCommunity'
 $SettingsFile=Join-Path $DataRoot 'settings.json'
 $LogDir=Join-Path $DataRoot 'logs'
@@ -15,7 +21,7 @@ $FlutterRoot=[IO.Path]::GetFullPath([string]$S.FlutterRoot)
 $SdkParent=Split-Path $FlutterRoot -Parent
 $Flutter=Join-Path $FlutterRoot 'bin\flutter.bat'
 $Dart=Join-Path $FlutterRoot 'bin\dart.bat'
-$LogFile=Join-Path $LogDir 'flutter-setup.log'
+$LogFile=if([string]::IsNullOrWhiteSpace($LogPath)){Join-Path $LogDir 'flutter-setup.log'}else{[IO.Path]::GetFullPath($LogPath)}
 $PubCache=Join-Path $SdkParent 'pub-cache'
 $Port=7357
 $MinimumFreeGB=8
@@ -465,8 +471,12 @@ try{
     'setup' { Prepare-Web; Write-Log 'Setup completato. Premi Avvia anteprima nel pannello.' }
     'web' {
       Prepare-Web
-      $portSeed=Get-Random -Minimum 7357 -Maximum 7400
-      $Port=Get-FreeLoopbackPort 7357 7399 $portSeed
+      if($RequestedPort -gt 0){
+        $Port=Get-FreeLoopbackPort $RequestedPort $RequestedPort $RequestedPort
+      }else{
+        $portSeed=Get-Random -Minimum 7357 -Maximum 7400
+        $Port=Get-FreeLoopbackPort 7357 7399 $portSeed
+      }
       $url="http://127.0.0.1:$Port"
       Write-Log "Porta libera selezionata per l'anteprima: $Port"
       Write-Log 'Apriro il browser solo quando main.dart.js sara servito come JavaScript, non quando risponde soltanto la porta TCP.'
