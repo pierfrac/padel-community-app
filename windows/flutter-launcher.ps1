@@ -72,10 +72,20 @@ try {
       Invoke-Flutter @('config', '--enable-web')
       Invoke-Flutter @('pub', 'get')
       $url = "http://127.0.0.1:$Port"
-      Start-Job -ArgumentList $url -ScriptBlock {
-        param($targetUrl)
-        Start-Sleep -Seconds 8
-        Start-Process $targetUrl
+      Start-Job -ArgumentList $url, $Port -ScriptBlock {
+        param($targetUrl, $targetPort)
+        for ($i = 0; $i -lt 120; $i++) {
+          $client = New-Object System.Net.Sockets.TcpClient
+          try {
+            $client.Connect('127.0.0.1', [int]$targetPort)
+            $client.Close()
+            Start-Process $targetUrl
+            return
+          } catch {
+            $client.Close()
+            Start-Sleep -Seconds 1
+          }
+        }
       } | Out-Null
       Write-Host "Anteprima Web: $url"
       Write-Host 'Premi Ctrl+C in questa finestra per fermare il server.'
