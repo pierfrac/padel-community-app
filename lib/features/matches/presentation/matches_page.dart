@@ -229,7 +229,7 @@ class _CreateMatchSheetState extends State<_CreateMatchSheet> {
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
           ),
           DropdownButtonFormField<String>(
-            value: _format,
+            initialValue: _format,
             decoration: const InputDecoration(
               labelText: 'Formato',
               border: OutlineInputBorder(),
@@ -251,7 +251,7 @@ class _CreateMatchSheetState extends State<_CreateMatchSheet> {
                 setState(() => _format = value ?? _format),
           ),
           DropdownButtonFormField<String>(
-            value: _category,
+            initialValue: _category,
             decoration: const InputDecoration(
               labelText: 'Categoria',
               border: OutlineInputBorder(),
