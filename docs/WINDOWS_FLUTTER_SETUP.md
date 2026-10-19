@@ -9,6 +9,12 @@ Il launcher è un pannello grafico Windows basato su PowerShell e Windows Forms:
 3. Nel pannello scegli dove conservare Flutter: cartella utente predefinita, cartella su un altro disco oppure SDK già installato.
 4. Premi Avvia anteprima. Il launcher scarica solo ciò che manca, prepara il target Web e apre http://127.0.0.1:7357 nel browser.
 
+## Scaricare il sorgente con un nome breve
+
+GitHub assegna agli ZIP automatici del branch un nome basato sul repository e sul branch; non esiste un'impostazione per personalizzarlo. Il workflow `.github/workflows/padel-zip.yml` crea invece un artifact chiamato `PADEL.zip` a ogni push su `develop`.
+
+Per scaricarlo, apri la pagina [Actions del workflow PADEL ZIP](https://github.com/pierfrac/padel-community-app.-README-iniziale-non/actions/workflows/padel-zip.yml), seleziona l'esecuzione più recente completata e scarica l'artifact `PADEL`. Gli artifact restano disponibili per 14 giorni; dopo ogni aggiornamento del branch ne viene generato uno nuovo. Questa è una copia del sorgente tracciato da Git, senza la cartella interna `.git` e senza file temporanei locali.
+
 ## Runtime persistente
 
 La configurazione è salvata in %LOCALAPPDATA%\PadelCommunity\settings.json. Per impostazione predefinita SDK e cache sono in %LOCALAPPDATA%\PadelCommunity\flutter-sdk\; si può invece scegliere una cartella su un altro disco. La cache Pub viene collocata accanto allo SDK scelto. Queste cartelle sono fuori dal repository, quindi cancellare o scaricare nuovamente il codice non richiede di riscaricare lo SDK.
