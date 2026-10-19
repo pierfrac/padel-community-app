@@ -63,11 +63,36 @@ Add-LinkButton 'Apri log' { if(Test-Path $LogFile){Start-Process notepad.exe $Lo
 Add-LinkButton 'Apri repository' { Start-Process explorer.exe $Root };$form.Controls.Add($bottom)
 $logbox=New-Object System.Windows.Forms.RichTextBox;$logbox.SetBounds(24,416,876,218);$logbox.Anchor='Top,Bottom,Left,Right';$logbox.ReadOnly=$true;$logbox.BackColor=[System.Drawing.Color]::FromArgb(10,15,24);$logbox.ForeColor=$ink;$logbox.Font=New-Object System.Drawing.Font('Consolas',9);$logbox.BorderStyle='FixedSingle';$form.Controls.Add($logbox)
 $footer=New-Object System.Windows.Forms.Label;$footer.Text='Runtime e log restano fuori dalla cartella Git.';$footer.ForeColor=$muted;$footer.SetBounds(26,640,700,20);$footer.Anchor='Bottom,Left';$form.Controls.Add($footer)
-$script:Proc=$null;$script:LogPos=0
-function Add-PanelLog([string]$line){if(-not $line.Trim()){return};$c=$ink;if($line -match 'ERRORE|ERROR|Exception|failed|non riuscito'){$c=[System.Drawing.Color]::FromArgb(255,126,126)}elseif($line -match 'OK|completato|ready|Pronto'){$c=[System.Drawing.Color]::FromArgb(103,218,166)};$logbox.SelectionStart=$logbox.TextLength;$logbox.SelectionLength=0;$logbox.SelectionColor=$c;$logbox.AppendText($line+[Environment]::NewLine);$logbox.SelectionStart=$logbox.TextLength;$logbox.ScrollToCaret()}
-function Refresh-Log {
- if(Test-Path $LogFile){try{$fs=[System.IO.File]::Open($LogFile,[System.IO.FileMode]::Open,[System.IO.FileAccess]::Read,[System.IO.FileShare]::ReadWrite);if($fs.Length -lt $script:LogPos){$script:LogPos=0};$fs.Seek($script:LogPos,[System.IO.SeekOrigin]::Begin)|Out-Null;$sr=New-Object System.IO.StreamReader($fs);$new=$sr.ReadToEnd();$script:LogPos=$fs.Position;$sr.Close();$fs.Close();foreach($line in ($new -split '\r?\n')){Add-PanelLog $line}}catch{}}
- if($script:Proc -and $script:Proc.HasExited){$code=$script:Proc.ExitCode;$script:Proc=$null;foreach($b in $script:ButtonList){$b.Enabled=$true};if($code -eq 0){$statusText.Text='Operazione completata.';Add-PanelLog '[panel] Operazione completata.'}else{$statusText.Text="Operazione terminata con errore (codice $code). Apri il log per i dettagli.";Add-PanelLog "[panel] ERRORE: exit code $code"}}
+$script:Proc=$null;$script:Positions=@{}
+foreach($f in @($LogFile,$OutFile,$ErrFile)){$script:Positions[$f]=0}
+function Add-PanelLog([string]$line){
+ if(-not $line.Trim()){return}
+ $c=$ink
+ if($line -match 'ERRORE|ERROR|Exception|failed|non riuscito'){$c=[System.Drawing.Color]::FromArgb(255,126,126)}
+ elseif($line -match 'OK|completato|ready|Pronto'){$c=[System.Drawing.Color]::FromArgb(103,218,166)}
+ $logbox.SelectionStart=$logbox.TextLength;$logbox.SelectionLength=0;$logbox.SelectionColor=$c;$logbox.AppendText($line+[Environment]::NewLine);$logbox.SelectionStart=$logbox.TextLength;$logbox.ScrollToCaret()
+}
+function Read-NewLines([string]$file,[string]$prefix){
+ if(-not(Test-Path $file)){return}
+ try{
+  $fs=[System.IO.File]::Open($file,[System.IO.FileMode]::Open,[System.IO.FileAccess]::Read,[System.IO.FileShare]::ReadWrite)
+  $pos=[long]$script:Positions[$file]
+  if($fs.Length -lt $pos){$pos=0}
+  $fs.Seek($pos,[System.IO.SeekOrigin]::Begin)|Out-Null
+  $sr=New-Object System.IO.StreamReader($fs);$new=$sr.ReadToEnd();$script:Positions[$file]=$fs.Position;$sr.Close();$fs.Close()
+  foreach($line in ($new -split '\r?\n')){if($line.Trim()){Add-PanelLog ($prefix+$line)}}
+ }catch{}
+}
+function Refresh-Log{
+ Read-NewLines $LogFile ''
+ Read-NewLines $OutFile '[output] '
+ Read-NewLines $ErrFile '[stderr] '
+ if($script:Proc -and $script:Proc.HasExited){
+  $code=$script:Proc.ExitCode;$script:Proc=$null
+  foreach($b in $script:ButtonList){$b.Enabled=$true}
+  if($code -eq 0){$statusText.Text='Operazione completata.';Add-PanelLog '[panel] Operazione completata.'}
+  else{$statusText.Text="Operazione terminata con errore (codice $code). Apri il log per i dettagli.";Add-PanelLog "[panel] ERRORE: exit code $code"}
+ }
 }
 $timer=New-Object System.Windows.Forms.Timer;$timer.Interval=700;$timer.Add_Tick({Refresh-Log});$timer.Start()
 function Invoke-Action([string]$action){
@@ -76,7 +101,7 @@ function Invoke-Action([string]$action){
  $spath.Text=[string]$S.FlutterRoot
  if(Has-Flutter ([string]$S.FlutterRoot)){$statusText.Text='Flutter gia presente: riutilizzo SDK e cache.'}else{$statusText.Text='Flutter non trovato: download nella posizione scelta. Puo richiedere diversi GB.'}
  foreach($b in $script:ButtonList){$b.Enabled=$false};Add-PanelLog ("[panel] Avvio operazione: "+$action)
- try{$argList=@('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f $Launcher),'-Action',$action);$script:Proc=Start-Process -FilePath 'powershell.exe' -ArgumentList $argList -WorkingDirectory $Root -WindowStyle Hidden -PassThru -RedirectStandardOutput $OutFile -RedirectStandardError $ErrFile}
+ try{Remove-Item $OutFile,$ErrFile -Force -ErrorAction SilentlyContinue;$script:Positions[$OutFile]=0;$script:Positions[$ErrFile]=0;$argList=@('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f $Launcher),'-Action',$action);$script:Proc=Start-Process -FilePath 'powershell.exe' -ArgumentList $argList -WorkingDirectory $Root -WindowStyle Hidden -PassThru -RedirectStandardOutput $OutFile -RedirectStandardError $ErrFile}
  catch{foreach($b in $script:ButtonList){$b.Enabled=$true};$statusText.Text='Impossibile avviare il processo.';Add-PanelLog ("ERRORE: "+$_.Exception.Message)}
 }
 $change.Add_Click({if(Show-StorageWizard){$spath.Text=[string]$S.FlutterRoot;$statusText.Text='Posizione salvata. Il prossimo avvio usera questo percorso.'}})
