@@ -54,6 +54,111 @@ function Test-FlutterArchive([string]$Path,[string]$ExpectedSha256){
     finally{$archive.Dispose()}
   }catch{return $false}
 }
+function Add-GitRuntimeToPath([string]$GitHome){
+  $dirs=@(
+    (Join-Path $GitHome 'cmd'),
+    (Join-Path $GitHome 'ucrt64\bin'),
+    (Join-Path $GitHome 'mingw64\bin'),
+    (Join-Path $GitHome 'usr\bin')
+  )
+  foreach($dir in $dirs){
+    if(Test-Path -LiteralPath $dir){
+      $normalized=$dir.TrimEnd('\')
+      $pathParts=@($env:PATH -split ';' | ForEach-Object{$_.TrimEnd('\')})
+      if($pathParts -notcontains $normalized){$env:PATH=$dir+';'+$env:PATH}
+    }
+  }
+}
+function Ensure-Git{
+  $systemGit=Get-Command git.exe -ErrorAction SilentlyContinue
+  if($systemGit){
+    Write-Log "Git gia disponibile: $($systemGit.Source)"
+    return
+  }
+
+  # MinGit is an official, portable Git for applications. Keep it beside this runtime
+  # and only amend PATH inside the current launcher process.
+  $toolsRoot=Join-Path $SdkParent 'tools'
+  $gitHome=Join-Path $toolsRoot 'mingit'
+  $gitExe=Join-Path $gitHome 'cmd\git.exe'
+  $gitZip=Join-Path $toolsRoot 'MinGit-2.56.0.2-64-bit.zip'
+  $gitPart=$gitZip+'.part'
+  $gitUrl='https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.2/MinGit-2.56.0.2-64-bit.zip'
+  $gitSha256='da35e72aa21c005a5a0d298cfbae110bc1609a815730ea0dde84b01a1b3cd3be'
+
+  if(-not (Test-Path -LiteralPath $gitExe)){
+    New-Item -ItemType Directory -Force -Path $toolsRoot | Out-Null
+    $validZip=$false
+    if(Test-Path -LiteralPath $gitZip){
+      $validZip=((Get-FileHash -LiteralPath $gitZip -Algorithm SHA256).Hash.ToLowerInvariant() -eq $gitSha256)
+    }
+    if(-not $validZip){
+      Remove-Item -LiteralPath $gitZip,$gitPart -Force -ErrorAction SilentlyContinue
+      Write-Log 'Git non trovato. Scarico MinGit portabile ufficiale (circa 38 MB); non installa Git a livello di sistema.'
+      $request=[Net.HttpWebRequest]::Create($gitUrl)
+      $request.Timeout=[System.Threading.Timeout]::Infinite
+      $request.ReadWriteTimeout=[System.Threading.Timeout]::Infinite
+      $request.AllowAutoRedirect=$true
+      $response=$request.GetResponse()
+      try{
+        $expectedLength=$response.ContentLength
+        $inputStream=$response.GetResponseStream()
+        $outputStream=New-Object IO.FileStream($gitPart,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::None)
+        try{
+          $buffer=New-Object byte[] (1MB)
+          [long]$received=0
+          [long]$lastLog=0
+          while(($read=$inputStream.Read($buffer,0,$buffer.Length)) -gt 0){
+            $outputStream.Write($buffer,0,$read)
+            $received+=$read
+            if(($received-$lastLog) -ge 5MB){
+              Write-Log ("Download MinGit: {0:N1} MB ricevuti." -f ($received/1MB))
+              $lastLog=$received
+            }
+          }
+        }finally{
+          $outputStream.Dispose()
+          $inputStream.Dispose()
+        }
+      }finally{$response.Close()}
+
+      if($expectedLength -gt 0 -and (Get-Item -LiteralPath $gitPart).Length -ne $expectedLength){
+        throw "Download MinGit incompleto: ricevuti $((Get-Item -LiteralPath $gitPart).Length) byte, attesi $expectedLength. Premi di nuovo l'azione per riprovare."
+      }
+      $actualHash=(Get-FileHash -LiteralPath $gitPart -Algorithm SHA256).Hash.ToLowerInvariant()
+      if($actualHash -ne $gitSha256){
+        Remove-Item -LiteralPath $gitPart -Force -ErrorAction SilentlyContinue
+        throw 'Il checksum SHA-256 di MinGit non corrisponde alla release ufficiale. Download rifiutato.'
+      }
+      Move-Item -LiteralPath $gitPart -Destination $gitZip -Force
+      Write-Log 'Archivio MinGit verificato con SHA-256.'
+    }else{
+      Write-Log 'Archivio MinGit gia presente e verificato.'
+    }
+
+    $stage=Join-Path $toolsRoot 'mingit-staging'
+    Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $stage | Out-Null
+    Expand-Archive -LiteralPath $gitZip -DestinationPath $stage -Force
+    $stagedGit=Join-Path $stage 'cmd\git.exe'
+    if(-not (Test-Path -LiteralPath $stagedGit)){
+      Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+      throw 'Il pacchetto MinGit ufficiale non contiene cmd\git.exe nella struttura attesa; non verra attivato.'
+    }
+    if(Test-Path -LiteralPath $gitHome){Remove-Item -LiteralPath $gitHome -Recurse -Force}
+    Move-Item -LiteralPath $stage -Destination $gitHome
+    Remove-Item -LiteralPath $gitZip -Force -ErrorAction SilentlyContinue
+    Write-Log "MinGit portabile installato in $gitHome."
+  }
+
+  Add-GitRuntimeToPath $gitHome
+  if(-not (Get-Command git.exe -ErrorAction SilentlyContinue)){
+    throw "MinGit e presente ma PowerShell non riesce a trovare git.exe in $gitHome."
+  }
+  $gitVersion=& $gitExe --version 2>&1
+  if($LASTEXITCODE -ne 0){throw "MinGit non si avvia correttamente: $gitVersion"}
+  Write-Log "Git disponibile per Flutter: $gitVersion"
+}
 function Install-Flutter{
   if(Test-Path $Flutter){
     Write-Log "SDK Flutter gia presente: $FlutterRoot"
@@ -274,6 +379,7 @@ try{
     Write-Log 'Cache di progetto rimossa. SDK e cache persistenti sono stati conservati.'
     exit 0
   }
+  Ensure-Git
   Install-Flutter
   switch($Action){
     'setup' { Prepare-Web; Write-Log 'Setup completato. Premi Avvia anteprima nel pannello.' }
