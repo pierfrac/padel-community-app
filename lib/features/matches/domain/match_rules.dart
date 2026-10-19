@@ -84,30 +84,26 @@ class MatchRules {
         .where((player) => player.gender == PlayerGender.female)
         .toList();
 
-    switch (request.format) {
-      case MatchFormat.mensDoubles:
-        if (men.length != MatchRequest.playerCapacity) {
-          issues.add(MatchValidationIssue.invalidPlayerComposition);
-        }
-      case MatchFormat.womensDoubles:
-        if (women.length != MatchRequest.playerCapacity) {
-          issues.add(MatchValidationIssue.invalidPlayerComposition);
-        }
-      case MatchFormat.mixedDoubles:
-        if (men.length != 2 || women.length != 2) {
-          issues.add(MatchValidationIssue.invalidPlayerComposition);
-        }
-      case MatchFormat.exceptionalMixed:
-        // The currently specified exceptional composition is three men and
-        // one woman. The exact category gap remains a product decision.
-        if (men.length != 3 || women.length != 1) {
-          issues.add(MatchValidationIssue.invalidPlayerComposition);
-        } else if (women.single.category.rank <=
-            request.requestedCategory.rank) {
-          issues.add(
-            MatchValidationIssue.exceptionalWomanMustBeHigherCategory,
-          );
-        }
+    if (request.format == MatchFormat.mensDoubles &&
+        men.length != MatchRequest.playerCapacity) {
+      issues.add(MatchValidationIssue.invalidPlayerComposition);
+    } else if (request.format == MatchFormat.womensDoubles &&
+        women.length != MatchRequest.playerCapacity) {
+      issues.add(MatchValidationIssue.invalidPlayerComposition);
+    } else if (request.format == MatchFormat.mixedDoubles &&
+        (men.length != 2 || women.length != 2)) {
+      issues.add(MatchValidationIssue.invalidPlayerComposition);
+    } else if (request.format == MatchFormat.exceptionalMixed) {
+      // The currently specified exceptional composition is three men and
+      // one woman. The exact category gap remains a product decision.
+      if (men.length != 3 || women.length != 1) {
+        issues.add(MatchValidationIssue.invalidPlayerComposition);
+      } else if (women.single.category.rank <=
+          request.requestedCategory.rank) {
+        issues.add(
+          MatchValidationIssue.exceptionalWomanMustBeHigherCategory,
+        );
+      }
     }
   }
 }
