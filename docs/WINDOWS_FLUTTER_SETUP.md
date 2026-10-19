@@ -15,7 +15,7 @@ La configurazione è salvata in %LOCALAPPDATA%\PadelCommunity\settings.json. Per
 
 Se si seleziona uno SDK esistente, indicare la cartella che contiene bin\flutter.bat. Non scegliere la cartella bin stessa.
 
-Il launcher valida l'archivio ZIP prima di riutilizzarlo: se il download precedente e incompleto o non valido, lo elimina e lo scarica nuovamente. Se l'estrazione fallisce ma l'archivio e valido, lo conserva per il nuovo tentativo. Dopo l'estrazione verificata, lo ZIP viene eliminato per recuperare spazio. Flutter mantiene i componenti Web nella cache dello SDK e scarica solo gli artefatti mancanti.
+Prima di scaricare, il launcher controlla lo spazio libero e, se il server comunica la dimensione, stima lo spazio necessario per archivio ed estrazione. Se lo spazio e insufficiente si ferma prima di iniziare e chiede di scegliere un altro disco. Il download viene scritto in un file temporaneo e registra avanzamento periodico nel log; solo dopo il trasferimento completo viene rinominato come ZIP. Un download interrotto non viene installato e al tentativo successivo viene scaricato di nuovo. Il launcher valida l'archivio ZIP prima di riutilizzarlo: se il download precedente e incompleto o non valido, lo elimina e lo scarica nuovamente. Se l'estrazione fallisce ma l'archivio e valido, lo conserva per il nuovo tentativo. Dopo l'estrazione verificata, lo ZIP viene eliminato per recuperare spazio. Il log registra anche una stima dell'ingombro dello SDK e lo spazio libero residuo. Flutter mantiene i componenti Web nella cache dello SDK e scarica solo gli artefatti mancanti.
 
 ## Pannello
 
