@@ -25,10 +25,12 @@ Prima di scaricare, il launcher controlla lo spazio libero e, quando il server c
 
 ## Pannello
 
-- Avvia anteprima: prepara le dipendenze e avvia l'app nel browser.
-- Prepara ambiente: installa/prepara SDK, cache Web e dipendenze senza avviare il server.
-- Verifica tutto: format, analyze, test e build Web.
-- Build Web, Analisi codice, Test, Formatta codice, Diagnostica: operazioni singole.
+- Start sessione 1 / Stop 1 e Start sessione 2 / Stop 2: gestiscono due anteprime indipendenti su porte diverse.
+- Ogni sessione usa una copia di lavoro separata e log dedicati; SDK Flutter e cache Pub vengono condivisi per evitare di riscaricarli.
+- Fermare una sessione non interrompe l'altra. Chiudendo il pannello, entrambe le sessioni gestite vengono arrestate.
+- Prepara ambiente: prepara SDK, cache Web e dipendenze senza avviare l'app.
+- Diagnostica: esegue `flutter doctor`; gli avvisi Android/Visual Studio non impediscono da soli l'anteprima Web.
+- Strumenti avanzati: Verifica tutto, Build Web, Analisi codice, Test e Formatta codice.
 - Apri cartella runtime, Apri log, Apri repository: scorciatoie di supporto.
 
 I log e la configurazione sono in %LOCALAPPDATA%\PadelCommunity\. Gli errori sono salvati in logs\flutter-setup.log dentro quella cartella dati.
