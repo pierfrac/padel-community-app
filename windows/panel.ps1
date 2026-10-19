@@ -22,7 +22,7 @@ function Show-StorageWizard {
   $r2=New-Object System.Windows.Forms.RadioButton;$r2.Text='Usa una cartella diversa per SDK e cache (disco secondario / esterno)';$r2.SetBounds(30,184,610,26);$d.Controls.Add($r2)
   $path=New-Object System.Windows.Forms.TextBox;$path.Text=[string]$S.FlutterRoot;$path.SetBounds(50,216,485,29);$path.Enabled=$false;$path.BackColor=[System.Drawing.Color]::FromArgb(30,40,57);$path.ForeColor=$d.ForeColor;$d.Controls.Add($path)
   $browse=New-Object System.Windows.Forms.Button;$browse.Text='Sfoglia...';$browse.SetBounds(545,214,100,31);$browse.Enabled=$false;$d.Controls.Add($browse)
-  $r3=New-Object System.Windows.Forms.RadioButton;$r3.Text='Riutilizza uno SDK Flutter già installato (cartella con bin\flutter.bat)';$r3.SetBounds(30,260,610,38);$r3.Checked=(Has-Flutter ([string]$S.FlutterRoot));$d.Controls.Add($r3)
+  $r3=New-Object System.Windows.Forms.RadioButton;$r3.Text='Riutilizza uno SDK Flutter gia installato (cartella con bin\flutter.bat)';$r3.SetBounds(30,260,610,38);$r3.Checked=(Has-Flutter ([string]$S.FlutterRoot));$d.Controls.Add($r3)
   $r2.Add_CheckedChanged({$path.Enabled=($r2.Checked -or $r3.Checked);$browse.Enabled=($r2.Checked -or $r3.Checked);if($r2.Checked){$path.Text=''}}.GetNewClosure())
   $r3.Add_CheckedChanged({$path.Enabled=($r2.Checked -or $r3.Checked);$browse.Enabled=($r2.Checked -or $r3.Checked);if($r3.Checked){$path.Text=[string]$S.FlutterRoot}}.GetNewClosure())
   $browse.Add_Click({$f=New-Object System.Windows.Forms.FolderBrowserDialog;$f.Description=if($r3.Checked){'Seleziona la cartella Flutter che contiene bin\flutter.bat'}else{'Seleziona dove creare la sottocartella flutter'};$f.ShowNewFolderButton=$r2.Checked;if($f.ShowDialog($d) -eq 'OK'){if($r2.Checked){$path.Text=Join-Path $f.SelectedPath 'flutter'}else{$path.Text=$f.SelectedPath}}}.GetNewClosure())
@@ -48,14 +48,14 @@ $spath=New-Object System.Windows.Forms.Label;$spath.Text=[string]$S.FlutterRoot;
 $change=New-Object System.Windows.Forms.Button;$change.Text='Cambia...';$change.SetBounds(744,18,115,34);$change.Anchor='Top,Right';$change.FlatStyle='Flat';$change.BackColor=$navy;$change.ForeColor=$ink;$storage.Controls.AddRange(@($stitle,$spath,$change));$form.Controls.Add($storage)
 $statusPanel=New-Object System.Windows.Forms.Panel;$statusPanel.SetBounds(24,218,876,74);$statusPanel.Anchor='Top,Left,Right';$statusPanel.BackColor=$panel
 $statusTitle=New-Object System.Windows.Forms.Label;$statusTitle.Text='STATO';$statusTitle.ForeColor=$muted;$statusTitle.SetBounds(14,8,90,20)
-$statusText=New-Object System.Windows.Forms.Label;$statusText.Text='Pronto. Il runtime verrà controllato al primo avvio.';$statusText.SetBounds(14,34,820,25);$statusText.AutoEllipsis=$true;$statusPanel.Controls.AddRange(@($statusTitle,$statusText));$form.Controls.Add($statusPanel)
+$statusText=New-Object System.Windows.Forms.Label;$statusText.Text='Pronto. Il runtime verra controllato al primo avvio.';$statusText.SetBounds(14,34,820,25);$statusText.AutoEllipsis=$true;$statusPanel.Controls.AddRange(@($statusTitle,$statusText));$form.Controls.Add($statusPanel)
 $buttons=New-Object System.Windows.Forms.FlowLayoutPanel;$buttons.SetBounds(24,306,876,100);$buttons.Anchor='Top,Left,Right';$buttons.BackColor=$navy;$buttons.WrapContents=$true;$script:ButtonList=@()
 function Add-ActionButton([string]$label,[string]$action,[bool]$primary=$false){
   $b=New-Object System.Windows.Forms.Button;$b.Text=$label;$b.Tag=$action;$b.Size=New-Object System.Drawing.Size(164,40);$b.Margin='0,0,10,10';$b.FlatStyle='Flat';$b.FlatAppearance.BorderSize=0
   if($primary){$b.BackColor=$blue;$b.ForeColor=[System.Drawing.Color]::White}else{$b.BackColor=$panel;$b.ForeColor=$ink}
   $actionName=$action;$b.Add_Click({Invoke-Action $actionName}.GetNewClosure());$buttons.Controls.Add($b);$script:ButtonList+=$b
 }
-Add-ActionButton '▶  Avvia anteprima' 'web' $true;Add-ActionButton 'Prepara ambiente' 'setup';Add-ActionButton 'Verifica tutto' 'check';Add-ActionButton 'Build Web' 'build';Add-ActionButton 'Analisi codice' 'analyze';Add-ActionButton 'Test' 'test';Add-ActionButton 'Formatta codice' 'format';Add-ActionButton 'Diagnostica' 'doctor'
+Add-ActionButton '>  Avvia anteprima' 'web' $true;Add-ActionButton 'Prepara ambiente' 'setup';Add-ActionButton 'Verifica tutto' 'check';Add-ActionButton 'Build Web' 'build';Add-ActionButton 'Analisi codice' 'analyze';Add-ActionButton 'Test' 'test';Add-ActionButton 'Formatta codice' 'format';Add-ActionButton 'Diagnostica' 'doctor'
 $bottom=New-Object System.Windows.Forms.FlowLayoutPanel;$bottom.Dock='Bottom';$bottom.Height=44;$bottom.Padding='18,5,10,5';$bottom.BackColor=$panel
 function Add-LinkButton($label,$handler){$b=New-Object System.Windows.Forms.Button;$b.Text=$label;$b.AutoSize=$true;$b.FlatStyle='Flat';$b.BackColor=$panel;$b.ForeColor=$muted;$b.Add_Click($handler);$bottom.Controls.Add($b)}
 Add-LinkButton 'Apri cartella runtime' { $p=Split-Path ([string]$S.FlutterRoot) -Parent;if(-not(Test-Path $p)){New-Item -ItemType Directory -Force -Path $p|Out-Null};Start-Process explorer.exe $p }
@@ -74,11 +74,11 @@ function Invoke-Action([string]$action){
  if($script:Proc -and -not $script:Proc.HasExited){return}
  if(-not(Test-Path $SettingsFile)){if(-not(Show-StorageWizard)){return}}
  $spath.Text=[string]$S.FlutterRoot
- if(Has-Flutter ([string]$S.FlutterRoot)){$statusText.Text='Flutter già presente: riutilizzo SDK e cache.'}else{$statusText.Text='Flutter non trovato: download nella posizione scelta. Può richiedere diversi GB.'}
+ if(Has-Flutter ([string]$S.FlutterRoot)){$statusText.Text='Flutter gia presente: riutilizzo SDK e cache.'}else{$statusText.Text='Flutter non trovato: download nella posizione scelta. Puo richiedere diversi GB.'}
  foreach($b in $script:ButtonList){$b.Enabled=$false};Add-PanelLog ("[panel] Avvio operazione: "+$action)
  try{$argList=@('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f $Launcher),'-Action',$action);$script:Proc=Start-Process -FilePath 'powershell.exe' -ArgumentList $argList -WorkingDirectory $Root -WindowStyle Hidden -PassThru -RedirectStandardOutput $OutFile -RedirectStandardError $ErrFile}
  catch{foreach($b in $script:ButtonList){$b.Enabled=$true};$statusText.Text='Impossibile avviare il processo.';Add-PanelLog ("ERRORE: "+$_.Exception.Message)}
 }
-$change.Add_Click({if(Show-StorageWizard){$spath.Text=[string]$S.FlutterRoot;$statusText.Text='Posizione salvata. Il prossimo avvio userà questo percorso.'}})
+$change.Add_Click({if(Show-StorageWizard){$spath.Text=[string]$S.FlutterRoot;$statusText.Text='Posizione salvata. Il prossimo avvio usera questo percorso.'}})
 $form.Add_Shown({if(-not(Test-Path $SettingsFile)){if(Show-StorageWizard){$spath.Text=[string]$S.FlutterRoot}};if(Test-Path $LogFile){Add-PanelLog 'Log precedente disponibile. Le nuove righe appariranno qui.'}})
 [void]$form.ShowDialog()
