@@ -6,16 +6,37 @@ import '../features/availability/presentation/availability_page.dart';
 import '../features/profile/presentation/profile_page.dart';
 
 class AppShell extends StatefulWidget {
-  const AppShell({super.key});
+  const AppShell({
+    super.key,
+    this.isAdmin = false,
+    this.identityLabel = '',
+    this.onSignOut,
+  });
+
+  final bool isAdmin;
+  final String identityLabel;
+  final VoidCallback? onSignOut;
   @override
   State<AppShell> createState() => _AppShellState();
 }
 class _AppShellState extends State<AppShell> {
   int _index = 0;
-  static const _pages = <Widget>[HomePage(), CalendarPage(), MatchesPage(), AvailabilityPage(), ProfilePage()];
   @override
   Widget build(BuildContext context) => Scaffold(
-    body: IndexedStack(index: _index, children: _pages),
+    body: IndexedStack(
+      index: _index,
+      children: [
+        HomePage(
+          isAdmin: widget.isAdmin,
+          identityLabel: widget.identityLabel,
+          onSignOut: widget.onSignOut,
+        ),
+        const CalendarPage(),
+        const MatchesPage(),
+        const AvailabilityPage(),
+        const ProfilePage(),
+      ],
+    ),
     bottomNavigationBar: NavigationBar(
       selectedIndex: _index,
       onDestinationSelected: (value) => setState(() => _index = value),
