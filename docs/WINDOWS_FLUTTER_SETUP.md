@@ -15,7 +15,7 @@ La configurazione è salvata in %LOCALAPPDATA%\PadelCommunity\settings.json. Per
 
 Se si seleziona uno SDK esistente, indicare la cartella che contiene bin\flutter.bat. Non scegliere la cartella bin stessa.
 
-Prima di scaricare, il launcher controlla lo spazio libero e, se il server comunica la dimensione, stima lo spazio necessario per archivio ed estrazione. Se lo spazio e insufficiente si ferma prima di iniziare e chiede di scegliere un altro disco. Il download viene scritto in un file temporaneo e registra avanzamento periodico nel log; solo dopo il trasferimento completo viene rinominato come ZIP. Un download interrotto non viene installato e al tentativo successivo viene scaricato di nuovo. Il launcher valida l'archivio ZIP prima di riutilizzarlo: se il download precedente e incompleto o non valido, lo elimina e lo scarica nuovamente. Se l'estrazione fallisce ma l'archivio e valido, lo conserva per il nuovo tentativo. Dopo l'estrazione verificata, lo ZIP viene eliminato per recuperare spazio. Il log registra anche una stima dell'ingombro dello SDK e lo spazio libero residuo. Flutter mantiene i componenti Web nella cache dello SDK e scarica solo gli artefatti mancanti.
+Prima di scaricare, il launcher controlla lo spazio libero e, quando il server comunica la dimensione, stima lo spazio necessario per archivio ed estrazione; se non basta, si ferma prima di iniziare. Lo ZIP viene salvato nella cartella runtime persistente, non in TEMP, con un nome legato alla versione esatta. Il log mostra il progresso ogni 25 MB. Se un download si interrompe, il file .part viene conservato e il tentativo successivo prova a riprendere dal punto raggiunto, se il server supporta le richieste Range. Prima dell'estrazione il launcher confronta SHA-256 con il checksum pubblicato nel manifest ufficiale Flutter e controlla che lo ZIP contenga flutter/bin/flutter.bat. Non riutilizza un archivio di un'altra versione. Dopo l'estrazione verificata, lo ZIP viene eliminato per recuperare spazio. Il log registra anche l'ingombro stimato dello SDK e lo spazio libero residuo. Per l'anteprima sono preparati gli artefatti Web; non viene richiesto Android Studio.
 
 ## Pannello
 
@@ -33,6 +33,6 @@ Si possono ancora usare PADEL.bat setup, PADEL.bat web, PADEL.bat format, PADEL.
 
 ## Limiti e verifiche
 
-Il launcher non modifica il PATH di sistema né il registro di Windows. Non serve Android Studio per provare la versione Web. Il primo download resta consistente: il vantaggio è scegliere il disco, non ripetere il download e riutilizzare la cache.
+Il launcher non modifica il PATH di sistema né il registro di Windows. Non serve Android Studio per provare la versione Web. Il pacchetto Windows ufficiale è distribuito come ZIP. Non è stata individuata una versione Windows ufficiale equivalente in 7z/tar.xz più compressa; si evita quindi di introdurre pacchetti non ufficiali. Il peso principale viene dalla distribuzione SDK stessa, non solo dall'installer. Dopo il primo download il launcher riutilizza SDK e cache persistenti.
 
 Il pannello e gli script non sono ancora stati eseguiti su una macchina Windows in questa sessione. Verificare sul PC reale prima di considerare il setup collaudato.
