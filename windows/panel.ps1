@@ -70,6 +70,13 @@ for($n=1;$n -le 4;$n++){
   $state=New-Object System.Windows.Forms.Label
   $state.Text='Ferma';$state.Font=New-Object System.Drawing.Font('Segoe UI',8)
   $state.ForeColor=$muted;$state.SetBounds(9,23,230,18);$state.AutoEllipsis=$true
+  $state.Cursor=[System.Windows.Forms.Cursors]::Hand
+  $state.Add_Click({
+    $activeSession=$script:Sessions[$id]
+    if($activeSession -and $activeSession.Proc -and -not $activeSession.Proc.HasExited -and $activeSession.Port -gt 0){
+      Start-Process ("http://127.0.0.1:{0}" -f $activeSession.Port)
+    }
+  }.GetNewClosure())
   $script:SessionStatusLabels[$id]=$state
 
   $start=New-Object System.Windows.Forms.Button
@@ -233,8 +240,10 @@ function Invoke-Action([string]$action){
  }
 }
 
-function Find-SessionPort{
-  $first=7357;$last=7399;$count=$last-$first+1;$seed=Get-Random -Minimum $first -Maximum ($last+1)
+function Find-SessionPort([string]$SessionId){
+  $first=7357;$last=7399;$count=$last-$first+1
+  $preferred=$first+([int]$SessionId)-1
+  if($preferred -gt $last){$preferred=$first}
   $reservedPorts=@()
   foreach($sessionId in @('1','2','3','4')){
     $existing=$script:Sessions[$sessionId]
@@ -242,8 +251,9 @@ function Find-SessionPort{
       $reservedPorts+=[int]$existing.Port
     }
   }
+  # Prefer a stable port per session so browser storage can persist between starts.
   for($offset=0;$offset -lt $count;$offset++){
-    $candidate=$first+(($seed-$first+$offset)%$count)
+    $candidate=$first+((($preferred-$first+$offset)%$count))
     if($reservedPorts -contains $candidate){continue}
     $listener=$null
     try{
@@ -269,7 +279,7 @@ function Sync-SessionWorkspace([hashtable]$session){
 function Start-Session([string]$id){
   $session=$script:Sessions[$id]
   if($script:Proc -and -not $script:Proc.HasExited){
-    Add-PanelLog '[panel] Attendi la fine dell’operazione in corso prima di avviare una sessione.'
+    Add-PanelLog '[panel] Attendi la fine dell operazione in corso prima di avviare una sessione.'
     return
   }
   if($session.Proc -and -not $session.Proc.HasExited){return}
@@ -283,7 +293,7 @@ function Start-Session([string]$id){
 
     Remove-Item $session.OutFile,$session.ErrFile,$session.LogFile -Force -ErrorAction SilentlyContinue
     foreach($file in @($session.OutFile,$session.ErrFile,$session.LogFile)){$session.Positions[$file]=0}
-    $port=Find-SessionPort
+    $port=Find-SessionPort $id
     $launcherArgs=@(
       '-NoProfile','-ExecutionPolicy','Bypass',
       '-File',('"{0}"' -f $Launcher),
