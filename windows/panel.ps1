@@ -88,7 +88,7 @@ function Refresh-Log{
  Read-NewLines $OutFile '[output] '
  Read-NewLines $ErrFile '[stderr] '
  if($script:Proc -and $script:Proc.HasExited){
-  $code=$script:Proc.ExitCode;$script:Proc=$null
+  $script:Proc.WaitForExit();$code=$script:Proc.ExitCode;$script:Proc=$null;if($null -eq $code){$code=0}
   foreach($b in $script:ButtonList){$b.Enabled=$true}
   if($code -eq 0){$statusText.Text='Operazione completata.';Add-PanelLog '[panel] Operazione completata.'}
   else{$statusText.Text="Operazione terminata con errore (codice $code). Apri il log per i dettagli.";Add-PanelLog "[panel] ERRORE: exit code $code"}
@@ -101,7 +101,7 @@ function Invoke-Action([string]$action){
  $spath.Text=[string]$S.FlutterRoot
  if(Has-Flutter ([string]$S.FlutterRoot)){$statusText.Text='Flutter gia presente: riutilizzo SDK e cache.'}else{$statusText.Text='Flutter non trovato: download nella posizione scelta. Puo richiedere diversi GB.'}
  foreach($b in $script:ButtonList){$b.Enabled=$false};Add-PanelLog ("[panel] Avvio operazione: "+$action)
- try{Remove-Item $OutFile,$ErrFile -Force -ErrorAction SilentlyContinue;$script:Positions[$OutFile]=0;$script:Positions[$ErrFile]=0;$argList=@('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f $Launcher),'-Action',$action);$script:Proc=Start-Process -FilePath 'powershell.exe' -ArgumentList $argList -WorkingDirectory $Root -WindowStyle Hidden -PassThru -RedirectStandardOutput $OutFile -RedirectStandardError $ErrFile}
+ try{Remove-Item $OutFile,$ErrFile -Force -ErrorAction SilentlyContinue;$script:Positions[$OutFile]=0;$script:Positions[$ErrFile]=0;$argList=@('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f $Launcher),'-Action',$action);$script:Proc=Start-Process -FilePath 'powershell.exe' -ArgumentList $argList -WorkingDirectory $Root -WindowStyle Hidden -PassThru -RedirectStandardOutput $OutFile -RedirectStandardError $ErrFile;$null=$script:Proc.Handle}
  catch{foreach($b in $script:ButtonList){$b.Enabled=$true};$statusText.Text='Impossibile avviare il processo.';Add-PanelLog ("ERRORE: "+$_.Exception.Message)}
 }
 $change.Add_Click({if(Show-StorageWizard){$spath.Text=[string]$S.FlutterRoot;$statusText.Text='Posizione salvata. Il prossimo avvio usera questo percorso.'}})
