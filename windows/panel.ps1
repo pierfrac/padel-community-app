@@ -64,8 +64,8 @@ for($n=1;$n -le 4;$n++){
   $card.SetBounds($column,$row,430,48);$card.BackColor=$panel
 
   $title=New-Object System.Windows.Forms.Label
-  $title.Text=("SESSIONE {0}" -f $id);$title.Font=New-Object System.Drawing.Font('Segoe UI Semibold',9)
-  $title.ForeColor=$ink;$title.SetBounds(9,4,120,17)
+  $title.Text=if($id -eq '1'){'SESSIONE 1 · ADMIN'}else{("SESSIONE {0} · GIOCATORE" -f $id)};$title.Font=New-Object System.Drawing.Font('Segoe UI Semibold',9)
+  $title.ForeColor=$ink;$title.SetBounds(9,4,225,17)
 
   $state=New-Object System.Windows.Forms.Label
   $state.Text='Ferma';$state.Font=New-Object System.Drawing.Font('Segoe UI',8)
@@ -278,6 +278,9 @@ function Sync-SessionWorkspace([hashtable]$session){
 }
 function Start-Session([string]$id){
   $session=$script:Sessions[$id]
+  $role=if($id -eq '1'){'admin'}else{'player'}
+  $userId=if($id -eq '1'){'admin-1'}else{"player-$id"}
+  $roleLabel=if($id -eq '1'){'ADMIN'}else{'GIOCATORE'}
   if($script:Proc -and -not $script:Proc.HasExited){
     Add-PanelLog '[panel] Attendi la fine dell operazione in corso prima di avviare una sessione.'
     return
@@ -300,7 +303,9 @@ function Start-Session([string]$id){
       '-Action','web',
       '-ProjectRoot',('"{0}"' -f $session.Workspace),
       '-RequestedPort',"$port",
-      '-LogPath',('"{0}"' -f $session.LogFile)
+      '-LogPath',('"{0}"' -f $session.LogFile),
+      '-TestRole',$role,
+      '-TestUserId',$userId
     )
     $session.Proc=Start-Process -FilePath 'powershell.exe' -ArgumentList $launcherArgs -WorkingDirectory $session.Workspace -WindowStyle Hidden -PassThru -RedirectStandardOutput $session.OutFile -RedirectStandardError $session.ErrFile
     $null=$session.Proc.Handle
@@ -310,8 +315,8 @@ function Start-Session([string]$id){
     $script:SessionStopButtons[$id].Text='Stop'
     $session.StatusLabel.Text=("Avvio - porta {0}" -f $port)
     $session.StatusLabel.ForeColor=$green
-    $statusText.Text=("Sessione {0} in avvio su http://127.0.0.1:{1}" -f $id,$port)
-    Add-PanelLog ("[panel] Sessione {0} partita sulla porta {1}." -f $id,$port)
+    $statusText.Text=("Sessione {0} ({1}) in avvio su http://127.0.0.1:{2}" -f $id,$roleLabel,$port)
+    Add-PanelLog ("[panel] Sessione {0} configurata come {1} ({2}) e partita sulla porta {3}." -f $id,$role,$userId,$port)
   }catch{
     $session.Proc=$null
     $session.Port=0
