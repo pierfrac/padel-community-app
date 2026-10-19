@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+
+import '../auth/google_admin_gate.dart';
 import 'app_shell.dart';
+import 'test_identity.dart';
 
 class PadelApp extends StatelessWidget {
   const PadelApp({super.key});
@@ -14,6 +17,10 @@ class PadelApp extends StatelessWidget {
       appBarTheme: const AppBarTheme(backgroundColor: Color(0xFFF7F8F7), foregroundColor: Color(0xFF17221F)),
       cardTheme: CardThemeData(elevation: 0, color: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: const BorderSide(color: Color(0xFFE3E9E6)))),
     ),
-    home: const AppShell(),
+    home: TestIdentity.isGoogleAdminPreview
+        ? const GoogleAdminGate()
+        : TestIdentity.isSimulatedPlayer
+            ? AppShell(identityLabel: TestIdentity.userId)
+            : const AppShell(),
   );
 }
