@@ -15,7 +15,11 @@ Il download iniziale dello SDK è grande e può richiedere tempo. Le esecuzioni 
 
 - PADEL.bat oppure PADEL.bat web: avvia la preview Web.
 - PADEL.bat setup: prepara lo SDK e le dipendenze senza avviare il server.
+- PADEL.bat format: formatta il codice Dart locale.
+- PADEL.bat analyze: esegue l'analisi statica Flutter.
+- PADEL.bat test: esegue i test Flutter.
 - PADEL.bat build: esegue flutter build web; l'output è build\web.
+- PADEL.bat check: esegue formattazione, analisi, test e build Web in sequenza, senza dipendere da GitHub Actions.
 - PADEL.bat doctor: mostra la diagnostica Flutter.
 - PADEL.bat clean: elimina solo la cache del progetto, non lo SDK portabile.
 
