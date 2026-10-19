@@ -210,8 +210,16 @@ function Invoke-Action([string]$action){
 
 function Find-SessionPort{
   $first=7357;$last=7399;$count=$last-$first+1;$seed=Get-Random -Minimum $first -Maximum ($last+1)
+  $reservedPorts=@()
+  foreach($sessionId in @('1','2')){
+    $existing=$script:Sessions[$sessionId]
+    if($existing -and $existing.Proc -and -not $existing.Proc.HasExited -and $existing.Port -gt 0){
+      $reservedPorts+=[int]$existing.Port
+    }
+  }
   for($offset=0;$offset -lt $count;$offset++){
     $candidate=$first+(($seed-$first+$offset)%$count)
+    if($reservedPorts -contains $candidate){continue}
     $listener=$null
     try{
       $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,$candidate)
