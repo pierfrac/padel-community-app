@@ -78,7 +78,7 @@ function Ensure-Git{
     return
   }
 
-  # MinGit is an official, portable Git for applications. Keep it beside this runtime
+  # MinGit is an official, portable Git for applications. Keep it in PADEL's user-data folder
   # and only amend PATH inside the current launcher process.
   $toolsRoot=Join-Path $DataRoot 'tools'
   $gitHome=Join-Path $toolsRoot 'mingit'
