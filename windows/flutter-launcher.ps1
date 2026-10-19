@@ -447,6 +447,25 @@ function Ensure-WebPlatform{
   }
   Write-Log 'Scaffolding Web pronto.'
 }
+function Ensure-Toolchain{
+  # Multiple preview sessions may start at nearly the same time. Serialize
+  # Git/Flutter provisioning so two processes never extract or download the SDK together.
+  $mutex=[System.Threading.Mutex]::new($false,'Local\PadelCommunityToolchain')
+  $ownsMutex=$false
+  try{
+    try{$ownsMutex=$mutex.WaitOne([TimeSpan]::FromMinutes(20))}
+    catch [System.Threading.AbandonedMutexException]{
+      $ownsMutex=$true
+      Write-Log 'Recuperato il lock della toolchain lasciato da un processo terminato.'
+    }
+    if(-not $ownsMutex){throw 'Timeout: un altro processo sta installando Git o Flutter. Riprova tra poco.'}
+    Ensure-Git
+    Install-Flutter
+  }finally{
+    if($ownsMutex){$mutex.ReleaseMutex()}
+    $mutex.Dispose()
+  }
+}
 function Prepare-Web{
   # Sessions have separate project folders but share the Flutter SDK/cache.
   # Serialize SDK setup so two launches cannot update the Web cache concurrently.
@@ -480,8 +499,7 @@ try{
     Write-Log 'Cache di progetto rimossa. SDK e cache persistenti sono stati conservati.'
     exit 0
   }
-  Ensure-Git
-  Install-Flutter
+  Ensure-Toolchain
   switch($Action){
     'setup' { Prepare-Web; Write-Log 'Setup completato. Premi Avvia anteprima nel pannello.' }
     'web' {
