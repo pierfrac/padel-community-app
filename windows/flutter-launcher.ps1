@@ -389,7 +389,6 @@ function Open-BrowserWhenWebReady([string]$TargetUrl,[int]$TargetPort,[string]$L
         $rootRequest=[Net.HttpWebRequest]::Create($url+'/')
         $rootRequest.Timeout=2500
         $rootRequest.ReadWriteTimeout=2500
-        $rootRequest.Headers['Cache-Control']='no-cache'
         $rootResponse=$rootRequest.GetResponse()
         $rootStatus=[int]$rootResponse.StatusCode
         $rootResponse.Close()
@@ -399,7 +398,6 @@ function Open-BrowserWhenWebReady([string]$TargetUrl,[int]$TargetPort,[string]$L
           $scriptRequest=[Net.HttpWebRequest]::Create($url+'/main.dart.js')
           $scriptRequest.Timeout=2500
           $scriptRequest.ReadWriteTimeout=2500
-          $scriptRequest.Headers['Cache-Control']='no-cache'
           $scriptResponse=$scriptRequest.GetResponse()
           $mime=[string]$scriptResponse.ContentType
           $scriptResponse.Close()
