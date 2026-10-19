@@ -68,10 +68,10 @@ function Add-SessionButton([string]$label,[string]$sessionId,[string]$kind,[bool
   }
   $buttons.Controls.Add($b)
 }
-Add-SessionButton '▶ Start sessione 1' '1' 'start' $true
-Add-SessionButton '■ Stop 1' '1' 'stop'
-Add-SessionButton '▶ Start sessione 2' '2' 'start' $true
-Add-SessionButton '■ Stop 2' '2' 'stop'
+Add-SessionButton 'Start sessione 1' '1' 'start' $true
+Add-SessionButton 'Stop 1' '1' 'stop'
+Add-SessionButton 'Start sessione 2' '2' 'start' $true
+Add-SessionButton 'Stop 2' '2' 'stop'
 $form.Controls.Add($buttons)
 
 $secondaryButtons=New-Object System.Windows.Forms.FlowLayoutPanel
@@ -86,7 +86,7 @@ function Add-ActionButton([string]$label,[string]$action,[System.Windows.Forms.C
 Add-ActionButton 'Prepara ambiente' 'setup' $secondaryButtons
 Add-ActionButton 'Diagnostica' 'doctor' $secondaryButtons
 $advancedToggle=New-Object System.Windows.Forms.Button
-$advancedToggle.Text='Strumenti avanzati ▸';$advancedToggle.Size=New-Object System.Drawing.Size(164,40);$advancedToggle.Margin='0,0,10,4';$advancedToggle.FlatStyle='Flat';$advancedToggle.FlatAppearance.BorderSize=0;$advancedToggle.BackColor=$panel;$advancedToggle.ForeColor=$muted
+$advancedToggle.Text='Strumenti avanzati >';$advancedToggle.Size=New-Object System.Drawing.Size(164,40);$advancedToggle.Margin='0,0,10,4';$advancedToggle.FlatStyle='Flat';$advancedToggle.FlatAppearance.BorderSize=0;$advancedToggle.BackColor=$panel;$advancedToggle.ForeColor=$muted
 $secondaryButtons.Controls.Add($advancedToggle)
 Add-ActionButton 'Verifica tutto' 'check' $advancedButtons
 Add-ActionButton 'Build Web' 'build' $advancedButtons
@@ -106,7 +106,7 @@ $advancedToggle.Add_Click({
     $advancedToggle.Text='Nascondi strumenti'
     $logbox.SetBounds(24,468,876,166)
   }else{
-    $advancedToggle.Text='Strumenti avanzati ▸'
+    $advancedToggle.Text='Strumenti avanzati >'
     $logbox.SetBounds(24,420,876,214)
   }
 }.GetNewClosure())
@@ -168,7 +168,7 @@ function Refresh-Log{
     $session.Proc=$null
     $script:SessionStartButtons[$id].Enabled=$true
     $script:SessionStopButtons[$id].Enabled=$false
-    $script:SessionStopButtons[$id].Text=("■ Stop {0}" -f $id)
+    $script:SessionStopButtons[$id].Text=("Stop {0}" -f $id)
     if($code -eq 0){
       $statusText.Text=("Sessione {0} terminata." -f $id)
       Add-PanelLog ("[panel] Sessione {0} terminata." -f $id)
@@ -185,7 +185,7 @@ function Invoke-Action([string]$action){
  if($action -eq 'setup'){
   $activeSessions=@(@('1','2') | Where-Object {$session=$script:Sessions[$_];$session.Proc -and -not $session.Proc.HasExited})
   if($activeSessions.Count -gt 0){
-    $statusText.Text='Ferma le sessioni attive prima di modificare o preparare l’ambiente.'
+    $statusText.Text='Ferma le sessioni attive prima di modificare o preparare l'ambiente.'
     Add-PanelLog '[panel] Prepara ambiente non avviato: prima ferma le sessioni attive.'
     return
   }
@@ -272,7 +272,7 @@ function Start-Session([string]$id){
     $session.Port=$port
     $script:SessionStartButtons[$id].Enabled=$false
     $script:SessionStopButtons[$id].Enabled=$true
-    $script:SessionStopButtons[$id].Text=("■ Stop {0} ({1})" -f $id,$port)
+    $script:SessionStopButtons[$id].Text=("Stop {0} ({1})" -f $id,$port)
     $statusText.Text=("Sessione {0} in avvio su http://127.0.0.1:{1}" -f $id,$port)
     Add-PanelLog ("[panel] Sessione {0} partita sulla porta {1}." -f $id,$port)
   }catch{
@@ -289,7 +289,7 @@ function Stop-Session([string]$id){
     $session.Proc=$null
     $script:SessionStartButtons[$id].Enabled=$true
     $script:SessionStopButtons[$id].Enabled=$false
-    $script:SessionStopButtons[$id].Text=("■ Stop {0}" -f $id)
+    $script:SessionStopButtons[$id].Text=("Stop {0}" -f $id)
     return
   }
   Add-PanelLog ("[panel] Arresto sessione {0} sulla porta {1}..." -f $id,$session.Port)
@@ -302,7 +302,7 @@ function Stop-Session([string]$id){
     $session.Proc=$null
     $script:SessionStartButtons[$id].Enabled=$true
     $script:SessionStopButtons[$id].Enabled=$false
-    $script:SessionStopButtons[$id].Text=("■ Stop {0}" -f $id)
+    $script:SessionStopButtons[$id].Text=("Stop {0}" -f $id)
     $statusText.Text=("Sessione {0} arrestata." -f $id)
     Add-PanelLog ("[panel] Sessione {0} arrestata." -f $id)
   }catch{
