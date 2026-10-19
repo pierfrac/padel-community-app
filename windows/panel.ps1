@@ -167,6 +167,7 @@ function Refresh-Log{
     $session.Proc=$null
     $script:SessionStartButtons[$id].Enabled=$true
     $script:SessionStopButtons[$id].Enabled=$false
+    $script:SessionStopButtons[$id].Text=("■ Stop {0}" -f $id)
     if($code -eq 0){
       $statusText.Text=("Sessione {0} terminata." -f $id)
       Add-PanelLog ("[panel] Sessione {0} terminata." -f $id)
@@ -214,17 +215,21 @@ function Find-SessionPort{
 function Sync-SessionWorkspace([hashtable]$session){
   New-Item -ItemType Directory -Force -Path (Split-Path $session.Workspace -Parent),$session.Workspace | Out-Null
   $robocopy=Join-Path $env:SystemRoot 'System32\robocopy.exe'
-  $args=@(
+  $robocopyArgs=@(
     $Root,$session.Workspace,'/MIR','/R:1','/W:1','/NFL','/NDL','/NJH','/NJS','/NP',
     '/XD','.git','.dart_tool','build','.idea','.vscode','runtime','logs'
   )
-  & $robocopy @args | Out-Null
+  & $robocopy @robocopyArgs | Out-Null
   $code=$LASTEXITCODE
   if($code -ge 8){throw "Impossibile preparare la copia di lavoro della sessione $($session.Id) (robocopy $code)."}
   Add-PanelLog ("[panel] Copia isolata aggiornata: sessione {0}" -f $session.Id)
 }
 function Start-Session([string]$id){
   $session=$script:Sessions[$id]
+  if($script:Proc -and -not $script:Proc.HasExited){
+    Add-PanelLog '[panel] Attendi la fine dell’operazione in corso prima di avviare una sessione.'
+    return
+  }
   if($session.Proc -and -not $session.Proc.HasExited){return}
   if(-not(Test-Path $SettingsFile)){if(-not(Show-StorageWizard)){return}}
   try{
@@ -250,6 +255,7 @@ function Start-Session([string]$id){
     $session.Port=$port
     $script:SessionStartButtons[$id].Enabled=$false
     $script:SessionStopButtons[$id].Enabled=$true
+    $script:SessionStopButtons[$id].Text=("■ Stop {0} ({1})" -f $id,$port)
     $statusText.Text=("Sessione {0} in avvio su http://127.0.0.1:{1}" -f $id,$port)
     Add-PanelLog ("[panel] Sessione {0} partita sulla porta {1}." -f $id,$port)
   }catch{
@@ -266,6 +272,7 @@ function Stop-Session([string]$id){
     $session.Proc=$null
     $script:SessionStartButtons[$id].Enabled=$true
     $script:SessionStopButtons[$id].Enabled=$false
+    $script:SessionStopButtons[$id].Text=("■ Stop {0}" -f $id)
     return
   }
   Add-PanelLog ("[panel] Arresto sessione {0} sulla porta {1}..." -f $id,$session.Port)
@@ -278,6 +285,7 @@ function Stop-Session([string]$id){
     $session.Proc=$null
     $script:SessionStartButtons[$id].Enabled=$true
     $script:SessionStopButtons[$id].Enabled=$false
+    $script:SessionStopButtons[$id].Text=("■ Stop {0}" -f $id)
     $statusText.Text=("Sessione {0} arrestata." -f $id)
     Add-PanelLog ("[panel] Sessione {0} arrestata." -f $id)
   }catch{
