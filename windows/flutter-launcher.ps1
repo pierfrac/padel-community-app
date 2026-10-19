@@ -448,10 +448,25 @@ function Ensure-WebPlatform{
   Write-Log 'Scaffolding Web pronto.'
 }
 function Prepare-Web{
-  Invoke-Flutter @('config','--enable-web')
-  Ensure-WebPlatform
-  Invoke-Flutter @('precache','--web')
-  Invoke-Flutter @('pub','get')
+  # Sessions have separate project folders but share the Flutter SDK/cache.
+  # Serialize SDK setup so two launches cannot update the Web cache concurrently.
+  $mutex=[System.Threading.Mutex]::new($false,'Local\PadelCommunityPrepareWeb')
+  $ownsMutex=$false
+  try{
+    try{$ownsMutex=$mutex.WaitOne([TimeSpan]::FromMinutes(15))}
+    catch [System.Threading.AbandonedMutexException]{
+      $ownsMutex=$true
+      Write-Log 'Recuperato il lock di preparazione lasciato da un processo terminato.'
+    }
+    if(-not $ownsMutex){throw 'Timeout: un altro processo sta ancora preparando Flutter Web. Riprova tra poco.'}
+    Invoke-Flutter @('config','--enable-web')
+    Ensure-WebPlatform
+    Invoke-Flutter @('precache','--web')
+    Invoke-Flutter @('pub','get')
+  }finally{
+    if($ownsMutex){$mutex.ReleaseMutex()}
+    $mutex.Dispose()
+  }
 }
 function Run-Format{
   Write-Log 'Formatto i file Dart in lib e test.'
