@@ -105,6 +105,20 @@ function Install-Flutter{
     }
   }
 
+  # Recupera anche il .part creato dalla versione precedente del launcher.
+  $legacyPartial=$legacyZip+'.part'
+  if(-not (Test-Path -LiteralPath $partialPath) -and (Test-Path -LiteralPath $legacyPartial)){
+    Write-Log 'Trovato un download parziale della versione precedente: controllo che non sia ancora in uso.'
+    try{
+      $partialLock=[System.IO.File]::Open($legacyPartial,[System.IO.FileMode]::Open,[System.IO.FileAccess]::ReadWrite,[System.IO.FileShare]::None)
+      $partialLock.Dispose()
+      Move-Item -LiteralPath $legacyPartial -Destination $partialPath -Force
+      Write-Log 'Download parziale trasferito al nome versionato; il prossimo tentativo proverra a riprenderlo.'
+    }catch{
+      throw "Il file parziale $legacyPartial sembra ancora in uso. Interrompi il vecchio processo PowerShell e riprova."
+    }
+  }
+
   $archiveValid=$false
   if(Test-Path -LiteralPath $zipPath){
     Write-Log 'Verifico checksum e struttura dello ZIP gia presente.'
