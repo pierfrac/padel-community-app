@@ -203,7 +203,7 @@ try{
     }
 
     if(-not $archiveValid -and -not (Test-Path -LiteralPath $zipPath)){
-      Write-Log 'Avvio download dell'archivio ufficiale. Il file resta nella cartella runtime, non in TEMP.'
+      Write-Log "Avvio download dell'archivio ufficiale. Il file resta nella cartella runtime, non in TEMP."
       if($offset -gt 0){Write-Log "Riprendo il download dal byte $offset."}
       $request=[Net.HttpWebRequest]::Create($archiveUrl)
       $request.Timeout=[System.Threading.Timeout]::Infinite
@@ -272,7 +272,7 @@ try{
 
   if(-not (Test-Path -LiteralPath $zipPath)){throw 'Archivio Flutter non disponibile dopo il download/verifica.'}
   Write-Log "Estrazione SDK nella cartella persistente: $SdkParent"
-  Write-Log 'Non chiudere il pannello durante l'estrazione.'
+  Write-Log "Non chiudere il pannello durante l'estrazione."
   $tar=Get-Command tar.exe -ErrorAction SilentlyContinue
   if($tar){
     & $tar.Source -xf $zipPath -C $SdkParent
