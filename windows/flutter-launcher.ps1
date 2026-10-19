@@ -364,8 +364,27 @@ function Install-Flutter{
   $freeAfter=Get-FreeSpaceGB $SdkParent
   Write-Log "SDK Flutter verificato. Ingombro SDK stimato: $sdkSize GB. Spazio libero residuo: $freeAfter GB."
 }
+function Ensure-WebPlatform{
+  $webIndex=Join-Path $Root 'web\index.html'
+  if(Test-Path -LiteralPath $webIndex){
+    Write-Log 'Scaffolding Web gia presente.'
+    return
+  }
+  Write-Log 'Scaffolding Web mancante: lo genero con flutter create.'
+  Push-Location $Root
+  try{
+    Invoke-Flutter @('create','--platforms=web','--project-name=padel_community_app','.')
+  }finally{
+    Pop-Location
+  }
+  if(-not (Test-Path -LiteralPath $webIndex)){
+    throw "Flutter create non ha generato il file richiesto: $webIndex"
+  }
+  Write-Log 'Scaffolding Web pronto.'
+}
 function Prepare-Web{
   Invoke-Flutter @('config','--enable-web')
+  Ensure-WebPlatform
   Invoke-Flutter @('precache','--web')
   Invoke-Flutter @('pub','get')
 }
