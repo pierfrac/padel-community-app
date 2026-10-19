@@ -5,9 +5,10 @@ param(
   [string]$ProjectRoot,
   [int]$RequestedPort = 0,
   [string]$LogPath,
-  [ValidateSet('admin','player')]
+  [ValidateSet('google-admin','player')]
   [string]$TestRole = 'player',
-  [string]$TestUserId = ''
+  [string]$TestUserId = '',
+  [string]$GoogleClientId = ''
 )
 $ErrorActionPreference='Stop'
 $DefaultRoot=Split-Path $PSScriptRoot -Parent
@@ -513,16 +514,20 @@ try{
         $portSeed=Get-Random -Minimum 7357 -Maximum 7400
         $Port=Get-FreeLoopbackPort 7357 7399 $portSeed
       }
-      $url="http://127.0.0.1:$Port"
+      $url="http://localhost:$Port"
       Write-Log "Porta libera selezionata per l'anteprima: $Port"
       Write-Log 'Apriro il browser solo quando main.dart.js sara servito come JavaScript, non quando risponde soltanto la porta TCP.'
       Open-BrowserWhenWebReady $url $Port $LogFile
       Write-Log "Anteprima Web in avvio: $url"
       $runArguments=@('run','-d','web-server','--web-hostname','127.0.0.1','--web-port',"$Port")
-      if(-not [string]::IsNullOrWhiteSpace($TestUserId)){
+      if($TestRole -eq 'google-admin'){
+        $runArguments+=('--dart-define=PADEL_TEST_ROLE=google-admin')
+        $runArguments+=("--dart-define=PADEL_GOOGLE_CLIENT_ID={0}" -f $GoogleClientId)
+        Write-Log 'Sessione admin: richiesto login Google reale. L autorizzazione amministrativa resta simulata in questa anteprima locale.'
+      }elseif(-not [string]::IsNullOrWhiteSpace($TestUserId)){
         $runArguments+=("--dart-define=PADEL_TEST_ROLE={0}" -f $TestRole)
         $runArguments+=("--dart-define=PADEL_TEST_USER_ID={0}" -f $TestUserId)
-        Write-Log ("Identita di test locale attiva: ruolo {0}, utente {1}. Non equivale ad autenticazione reale." -f $TestRole,$TestUserId)
+        Write-Log ("Identita giocatore di test locale: {0}. Non e un account Google." -f $TestUserId)
       }
       Invoke-Flutter $runArguments
     }
