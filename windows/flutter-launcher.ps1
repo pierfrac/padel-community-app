@@ -80,7 +80,7 @@ function Ensure-Git{
 
   # MinGit is an official, portable Git for applications. Keep it beside this runtime
   # and only amend PATH inside the current launcher process.
-  $toolsRoot=Join-Path $SdkParent 'tools'
+  $toolsRoot=Join-Path $DataRoot 'tools'
   $gitHome=Join-Path $toolsRoot 'mingit'
   $gitExe=Join-Path $gitHome 'cmd\git.exe'
   $gitZip=Join-Path $toolsRoot 'MinGit-2.56.0.2-64-bit.zip'
