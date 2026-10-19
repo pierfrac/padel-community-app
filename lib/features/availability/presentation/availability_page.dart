@@ -94,7 +94,7 @@ class _AvailabilityPageState extends State<AvailabilityPage> {
           ),
           const SizedBox(height: 5),
           Text(
-            '\${_time(_hours.start)} – \${_time(_hours.end)}',
+            '${_time(_hours.start)} – ${_time(_hours.end)}',
             style: const TextStyle(
               fontSize: 24,
               color: Color(0xFF146C5A),
