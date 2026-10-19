@@ -1,34 +1,38 @@
-# Ambiente Flutter portabile su Windows
+# Launcher Windows Padel Community
 
-Questo progetto può essere compilato e provato in Windows senza installare Flutter a livello di sistema e senza permessi amministrativi, se le policy aziendali consentono il download e l'esecuzione dei programmi.
+Il launcher è un pannello grafico Windows basato su PowerShell e Windows Forms: non richiede installazioni aggiuntive o privilegi amministrativi, se le policy del PC consentono l'esecuzione degli script e i download HTTPS.
 
-## Avvio
+## Primo avvio
 
-1. Scarica/clona il repository in una cartella locale corta, per esempio C:\PadelCommunity.
+1. Scarica o clona il repository in una cartella locale.
 2. Fai doppio clic su PADEL.bat.
-3. Al primo avvio il launcher scarica lo SDK Flutter stable ufficiale per Windows, lo estrae in runtime\flutter-sdk\flutter, abilita il target Web e scarica le dipendenze.
-4. Il browser apre http://127.0.0.1:7357. Il terminale resta aperto mentre il server è attivo; Ctrl+C lo ferma.
+3. Nel pannello scegli dove conservare Flutter: cartella utente predefinita, cartella su un altro disco oppure SDK già installato.
+4. Premi Avvia anteprima. Il launcher scarica solo ciò che manca, prepara il target Web e apre http://127.0.0.1:7357 nel browser.
 
-Il download iniziale dello SDK è grande e può richiedere tempo. Le esecuzioni successive riutilizzano lo SDK già scaricato.
+## Runtime persistente
 
-## Comandi
+La configurazione è salvata in %LOCALAPPDATA%\PadelCommunity\settings.json. Per impostazione predefinita SDK e cache sono in %LOCALAPPDATA%\PadelCommunity\flutter-sdk\; si può invece scegliere una cartella su un altro disco. La cache Pub viene collocata accanto allo SDK scelto. Queste cartelle sono fuori dal repository, quindi cancellare o scaricare nuovamente il codice non richiede di riscaricare lo SDK.
 
-- PADEL.bat oppure PADEL.bat web: avvia la preview Web.
-- PADEL.bat setup: prepara lo SDK e le dipendenze senza avviare il server.
-- PADEL.bat format: formatta il codice Dart locale.
-- PADEL.bat analyze: esegue l'analisi statica Flutter.
-- PADEL.bat test: esegue i test Flutter.
-- PADEL.bat build: esegue flutter build web; l'output è build\web.
-- PADEL.bat check: esegue formattazione, analisi, test e build Web in sequenza, senza dipendere da GitHub Actions.
-- PADEL.bat doctor: mostra la diagnostica Flutter.
-- PADEL.bat clean: elimina solo la cache del progetto, non lo SDK portabile.
+Se si seleziona uno SDK esistente, indicare la cartella che contiene bin\flutter.bat. Non scegliere la cartella bin stessa.
 
-Il log del launcher è scritto in logs\flutter-setup.log.
+Il launcher conserva un archivio ZIP completato se l'estrazione fallisce, per permettere un nuovo tentativo senza riscaricare il file. Se un download interrotto lascia un archivio piccolo/incompleto, viene eliminato e scaricato nuovamente. Dopo l'estrazione verificata, lo ZIP viene eliminato per recuperare spazio. Flutter mantiene i componenti Web nella cache dello SDK e scarica solo gli artefatti mancanti.
 
-## Cosa serve e cosa no
+## Pannello
 
-Per compilare e provare la versione Web non servono Android Studio, un emulatore Android o una installazione di Flutter globale. Il launcher non modifica il PATH di sistema né il registro di Windows. Lo SDK e la cache sono locali al repository e la cartella runtime è esclusa da Git.
+- Avvia anteprima: prepara le dipendenze e avvia l'app nel browser.
+- Prepara ambiente: installa/prepara SDK, cache Web e dipendenze senza avviare il server.
+- Verifica tutto: format, analyze, test e build Web.
+- Build Web, Analisi codice, Test, Formatta codice, Diagnostica: operazioni singole.
+- Apri cartella runtime, Apri log, Apri repository: scorciatoie di supporto.
 
-La prima esecuzione richiede accesso HTTPS al dominio ufficiale storage.googleapis.com. Proxy, antivirus o policy aziendali possono comunque bloccare il download o l'esecuzione: il fatto di non avere permessi amministrativi non è di per sé un impedimento.
+I log e la configurazione sono in %LOCALAPPDATA%\PadelCommunity\. Gli errori sono salvati in logs\flutter-setup.log dentro quella cartella dati.
 
-Questo ambiente non compila né installa la versione Android. L'obiettivo iniziale è verificare e provare l'interfaccia Flutter nel browser, anche con la modalità mobile di Chrome.
+## Avvio da terminale
+
+Si possono ancora usare PADEL.bat setup, PADEL.bat web, PADEL.bat format, PADEL.bat analyze, PADEL.bat test, PADEL.bat build, PADEL.bat check, PADEL.bat doctor e PADEL.bat clean. Il doppio clic senza argomenti apre il pannello.
+
+## Limiti e verifiche
+
+Il launcher non modifica il PATH di sistema né il registro di Windows. Non serve Android Studio per provare la versione Web. Il primo download resta consistente: il vantaggio è scegliere il disco, non ripetere il download e riutilizzare la cache.
+
+Il pannello e gli script non sono ancora stati eseguiti su una macchina Windows in questa sessione. Verificare sul PC reale prima di considerare il setup collaudato.
