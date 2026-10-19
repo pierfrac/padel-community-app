@@ -45,11 +45,20 @@ function Install-Flutter{
   $zipPath=Join-Path $SdkParent 'flutter-windows-stable.zip'
   Write-Log "Versione selezionata: $($release.version)"
   Write-Log "Destinazione persistente: $SdkParent"
-  if((Test-Path $zipPath) -and (Get-Item $zipPath).Length -lt 100MB){Remove-Item $zipPath -Force}
+  if(Test-Path $zipPath){
+    $zipValid=$false
+    try{
+      Add-Type -AssemblyName System.IO.Compression.FileSystem
+      $archive=[System.IO.Compression.ZipFile]::OpenRead($zipPath)
+      $archive.Dispose()
+      $zipValid=$true
+    }catch{$zipValid=$false}
+    if(-not $zipValid){Write-Log 'Archivio precedente incompleto o non valido: lo scarico di nuovo.';Remove-Item $zipPath -Force -ErrorAction SilentlyContinue}
+  }
   if(-not (Test-Path $zipPath)){
     Write-Log 'Download Flutter: il file e grande, attendere il completamento.'
     Invoke-WebRequest -Uri $archiveUrl -OutFile $zipPath -UseBasicParsing -TimeoutSec 0
-  }else{Write-Log 'Archivio di download gia presente: provo a riutilizzarlo.'}
+  }else{Write-Log 'Archivio ZIP valido gia presente: provo a riutilizzarlo.'}
   Write-Log 'Estrazione SDK. Il file ZIP verra eliminato dopo una verifica riuscita.'
   Expand-Archive -LiteralPath $zipPath -DestinationPath $SdkParent -Force
   if(-not (Test-Path $Flutter)){throw "Estrazione incompleta: non trovo $Flutter. L'archivio e stato conservato per il recupero."}
