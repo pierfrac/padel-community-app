@@ -15,7 +15,7 @@ class _MatchesPageState extends State<MatchesPage> {
       const SizedBox(height: 8),
       const Text('Richieste della comunità e posti disponibili.', style: TextStyle(color: Color(0xFF68756F))),
       const SizedBox(height: 18),
-      Wrap(spacing: 7, children: ['Tutte','Aperte','In formazione','Confermate'].map((v) => ChoiceChip(label: Text(v), selected: _filter == v, onSelected: (_) => setState(() => _filter = v)).toList()).toList()),
+      Wrap(spacing: 7, children: ['Tutte','Aperte','In formazione','Confermate'].map((v) => ChoiceChip(label: Text(v), selected: _filter == v, onSelected: (_) => setState(() => _filter = v)).toList()),
       const SizedBox(height: 16),
       if (_filter == 'Tutte' || _filter == 'Aperte') _card('Doppio misto', 'Domani · 18:00–19:30', '2 posti disponibili · Circolo da definire', '2 / 4', '2 POSTI LIBERI', const Color(0xFFFFF0D9), const Color(0xFF8A5700)),
       if (_filter == 'Tutte' || _filter == 'In formazione') ...[const SizedBox(height: 12), _card('Doppio maschile', 'Mercoledì · 20:00–21:30', 'Zona da definire', '3 / 4', 'IN FORMAZIONE', const Color(0xFFE8F0FF), const Color(0xFF315EA8))],
