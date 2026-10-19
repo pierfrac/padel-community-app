@@ -1,6 +1,6 @@
 param(
   [Parameter(Position = 0)]
-  [ValidateSet('setup', 'web', 'build', 'doctor', 'clean')]
+  [ValidateSet('setup', 'web', 'build', 'analyze', 'test', 'check', 'format', 'doctor', 'clean')]
   [string]$Action = 'web'
 )
 $ErrorActionPreference = 'Stop'
@@ -97,6 +97,36 @@ try {
       Invoke-Flutter @('pub', 'get')
       Invoke-Flutter @('build', 'web')
       Write-Host "Build pronta in: $Root\build\web"
+    }
+    'format' {
+      Install-Flutter
+      $Dart = Join-Path $FlutterRoot 'bin\dart.bat'
+      Write-Log 'Formatto i file Dart in lib e test.'
+      & $Dart format (Join-Path $Root 'lib') (Join-Path $Root 'test')
+      if ($LASTEXITCODE -ne 0) { throw "dart format ha restituito il codice $LASTEXITCODE." }
+    }
+    'analyze' {
+      Install-Flutter
+      Invoke-Flutter @('pub', 'get')
+      Invoke-Flutter @('analyze')
+    }
+    'test' {
+      Install-Flutter
+      Invoke-Flutter @('pub', 'get')
+      Invoke-Flutter @('test')
+    }
+    'check' {
+      Install-Flutter
+      Invoke-Flutter @('config', '--enable-web')
+      Invoke-Flutter @('pub', 'get')
+      $Dart = Join-Path $FlutterRoot 'bin\dart.bat'
+      Write-Log 'Formatto i file Dart in lib e test.'
+      & $Dart format (Join-Path $Root 'lib') (Join-Path $Root 'test')
+      if ($LASTEXITCODE -ne 0) { throw "dart format ha restituito il codice $LASTEXITCODE." }
+      Invoke-Flutter @('analyze')
+      Invoke-Flutter @('test')
+      Invoke-Flutter @('build', 'web')
+      Write-Host "Controlli completati. Build Web: $Root\build\web"
     }
     'doctor' {
       Install-Flutter
