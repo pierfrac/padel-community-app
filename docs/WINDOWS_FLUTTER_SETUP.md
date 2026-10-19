@@ -25,7 +25,9 @@ Prima di scaricare, il launcher controlla lo spazio libero e, quando il server c
 
 ## Pannello
 
-- Le sessioni 1, 2, 3 e 4 hanno ciascuna i pulsanti Start e Stop e vengono servite su porte locali distinte.
+- Le sessioni 1, 2, 3 e 4 hanno ciascuna i pulsanti Start e Stop e vengono servite su porte locali distinte, preferibilmente 7357, 7358, 7359 e 7360.
+- La porta di ogni sessione resta stabile quando è libera, così l'origine del browser e il relativo storage Web possono persistere tra gli avvii. Se una porta è occupata, viene scelta la successiva libera; il numero della porta è mostrato nel pannello.
+- Fai clic sullo stato della sessione per riaprire l'indirizzo nel browser.
 - Ogni sessione usa una copia di lavoro separata e log dedicati; SDK Flutter e cache Pub vengono condivisi per evitare di riscaricarli.
 - Fermare una sessione non interrompe le altre. Chiudendo il pannello, tutte le sessioni gestite vengono arrestate.
 - Le quattro sessioni permettono di provare contemporaneamente quattro istanze dell'interfaccia; non equivalgono ancora a quattro account reali né forniscono sincronizzazione condivisa, che devono essere implementati nella app.
