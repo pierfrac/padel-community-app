@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 
-import 'package:padel_community_app/app/test_identity.dart';
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  const HomePage({
+    super.key,
+    this.isAdmin = false,
+    this.identityLabel = '',
+    this.onSignOut,
+  });
+
+  final bool isAdmin;
+  final String identityLabel;
+  final VoidCallback? onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -14,6 +22,12 @@ class HomePage extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
         actions: [
+          if (onSignOut != null)
+            IconButton(
+              tooltip: 'Esci dall’account Google',
+              onPressed: onSignOut,
+              icon: const Icon(Icons.logout_rounded),
+            ),
           IconButton(
             tooltip: 'Notifiche',
             onPressed: () {},
@@ -26,11 +40,11 @@ class HomePage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
           children: [
-            if (TestIdentity.isEnabled) ...[
+            if (identityLabel.isNotEmpty) ...[
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: TestIdentity.isAdmin
+                  color: isAdmin
                       ? const Color(0xFFE4F3EB)
                       : const Color(0xFFE8F0FF),
                   borderRadius: BorderRadius.circular(14),
@@ -52,14 +66,14 @@ class HomePage extends StatelessWidget {
                         children: [
                           Text(
                             TestIdentity.isAdmin
-                                ? 'ADMIN · TEST LOCALE'
+                                ? 'ADMIN · GOOGLE TEST'
                                 : 'GIOCATORE · TEST LOCALE',
                             style: const TextStyle(
                               fontWeight: FontWeight.w800,
                             ),
                           ),
                           Text(
-                            'Identità simulata: ${TestIdentity.userId}',
+                            isAdmin ? 'Account Google: $identityLabel' : 'Identità simulata: $identityLabel',
                             style: const TextStyle(fontSize: 12),
                           ),
                         ],
