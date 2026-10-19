@@ -84,7 +84,6 @@ function Read-NewLines([string]$file,[string]$prefix){
  }catch{}
 }
 function Refresh-Log{
- Read-NewLines $LogFile ''
  Read-NewLines $OutFile '[output] '
  Read-NewLines $ErrFile '[stderr] '
  if($script:Proc -and $script:Proc.HasExited){
