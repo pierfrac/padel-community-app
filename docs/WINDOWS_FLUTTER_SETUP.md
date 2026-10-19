@@ -7,7 +7,7 @@ Il launcher è un pannello grafico Windows basato su PowerShell e Windows Forms:
 1. Scarica o clona il repository in una cartella locale.
 2. Fai doppio clic su PADEL.bat.
 3. Nel pannello scegli dove conservare Flutter: cartella utente predefinita, cartella su un altro disco oppure SDK già installato.
-4. Premi Avvia anteprima. Il launcher scarica solo ciò che manca, genera la cartella `web/` con `flutter create` se assente, prepara il target Web e apre http://127.0.0.1:7357 nel browser.
+4. Premi Avvia anteprima. Il launcher scarica solo ciò che manca, genera la cartella `web/` con `flutter create` se assente, prepara il target Web, seleziona una porta locale libera e apre il browser solo dopo aver verificato che `main.dart.js` venga servito con un MIME JavaScript.
 
 ## Scaricare il sorgente con un nome breve
 
