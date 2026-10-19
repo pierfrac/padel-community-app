@@ -72,53 +72,7 @@ function Install-Flutter{
   $hash=[string]$manifest.current_release.stable
   $release=$manifest.releases|Where-Object{$_.hash -eq $hash -and $_.channel -eq 'stable'}|Select-Object -First 1
   if(-not $release){throw 'Impossibile individuare la release stable corrente nel manifest ufficiale.'}
-  if(-not $release.archive -or [string]$release.sha256 -notmatch '^[A-Fa-f0-9]{64}
-  Invoke-Flutter @('config','--enable-web')
-  Invoke-Flutter @('precache','--web')
-  Invoke-Flutter @('pub','get')
-}
-function Run-Format{
-  Write-Log 'Formatto i file Dart in lib e test.'
-  & $Dart format (Join-Path $Root 'lib') (Join-Path $Root 'test')
-  if($LASTEXITCODE -ne 0){throw "dart format ha restituito il codice $LASTEXITCODE."}
-}
-try{
-  if($Action -eq 'clean'){
-    if(Test-Path (Join-Path $Root 'build')){Remove-Item (Join-Path $Root 'build') -Recurse -Force}
-    if(Test-Path (Join-Path $Root '.dart_tool')){Remove-Item (Join-Path $Root '.dart_tool') -Recurse -Force}
-    Write-Log 'Cache di progetto rimossa. SDK e cache persistenti sono stati conservati.'
-    exit 0
-  }
-  Install-Flutter
-  switch($Action){
-    'setup' { Prepare-Web; Write-Log 'Setup completato. Premi Avvia anteprima nel pannello.' }
-    'web' {
-      Prepare-Web
-      $url="http://127.0.0.1:$Port"
-      Start-Job -ArgumentList $url,$Port -ScriptBlock {
-        param($targetUrl,$targetPort)
-        for($i=0;$i -lt 120;$i++){
-          $client=New-Object System.Net.Sockets.TcpClient
-          try{$client.Connect('127.0.0.1',[int]$targetPort);$client.Close();Start-Process $targetUrl;return}
-          catch{$client.Close();Start-Sleep -Seconds 1}
-        }
-      }|Out-Null
-      Write-Log "Anteprima Web: $url"
-      Invoke-Flutter @('run','-d','web-server','--web-hostname','127.0.0.1','--web-port',"$Port")
-    }
-    'build' { Prepare-Web;Invoke-Flutter @('build','web');Write-Log "Build pronta: $Root\build\web" }
-    'format' { Run-Format }
-    'analyze' { Invoke-Flutter @('pub','get');Invoke-Flutter @('analyze') }
-    'test' { Invoke-Flutter @('pub','get');Invoke-Flutter @('test') }
-    'check' { Prepare-Web;Run-Format;Invoke-Flutter @('analyze');Invoke-Flutter @('test');Invoke-Flutter @('build','web');Write-Log "Controlli completati. Build Web: $Root\build\web" }
-    'doctor' { & $Flutter doctor -v;if($LASTEXITCODE -ne 0){throw "flutter doctor ha restituito il codice $LASTEXITCODE."} }
-  }
-}catch{
-  Write-Log ('ERRORE: '+$_.Exception.Message)
-  Write-Output "Setup non riuscito. Apri il pannello Padel e consulta: $LogFile"
-  exit 1
-}
-){
+  if(-not $release.archive -or [string]$release.sha256 -notmatch '^[A-Fa-f0-9]{64}$'){
     throw 'Il manifest ufficiale non contiene archivio e checksum SHA-256 validi.'
   }
 
@@ -289,7 +243,6 @@ try{
   $freeAfter=Get-FreeSpaceGB $SdkParent
   Write-Log "SDK Flutter verificato. Ingombro SDK stimato: $sdkSize GB. Spazio libero residuo: $freeAfter GB."
 }
-
 function Prepare-Web{
   Invoke-Flutter @('config','--enable-web')
   Invoke-Flutter @('precache','--web')
