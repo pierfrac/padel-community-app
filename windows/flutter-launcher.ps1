@@ -97,7 +97,7 @@ function Install-Flutter{
         }
       }finally{$outputStream.Dispose();$inputStream.Dispose()}
     }finally{$response.Close()}
-    if($expected -gt 0 -and (Get-Item $partialPath).Length -ne $expected){throw "Download incompleto: ricevuti $((Get-Item $partialPath).Length) byte, attesi $expected. Il file temporaneo resta disponibile per diagnosi; riprova dopo aver controllato la connessione."}
+    if($expected -gt 0 -and (Get-Item $partialPath).Length -ne $expected){throw "Download incompleto: ricevuti $((Get-Item $partialPath).Length) byte, attesi $expected. Il file temporaneo non verra installato; al prossimo tentativo verra rimosso e scaricato di nuovo."}
     Move-Item -LiteralPath $partialPath -Destination $zipPath -Force
     Write-Log "Download completato: $([math]::Round((Get-Item $zipPath).Length/1GB,2)) GB."
   }else{Write-Log 'Archivio ZIP valido gia presente: provo a riutilizzarlo.'}
