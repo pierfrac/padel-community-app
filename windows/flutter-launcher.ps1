@@ -32,7 +32,7 @@ function Invoke-Flutter([string[]]$Arguments){
   if($LASTEXITCODE -ne 0){throw "Flutter ha restituito il codice $LASTEXITCODE. Consultare $LogFile."}
 }
 function Install-Flutter{
-  if(Test-Path $Flutter){Write-Log "SDK Flutter già presente: $FlutterRoot";return}
+  if(Test-Path $Flutter){Write-Log "SDK Flutter gia presente: $FlutterRoot";return}
   New-Item -ItemType Directory -Force -Path $SdkParent | Out-Null
   $manifestUrl='https://storage.googleapis.com/flutter_infra_release/releases/releases_windows.json'
   Write-Log 'Cerco la versione stable ufficiale di Flutter per Windows.'
@@ -47,12 +47,12 @@ function Install-Flutter{
   Write-Log "Destinazione persistente: $SdkParent"
   if((Test-Path $zipPath) -and (Get-Item $zipPath).Length -lt 100MB){Remove-Item $zipPath -Force}
   if(-not (Test-Path $zipPath)){
-    Write-Log 'Download Flutter: il file è grande, attendere il completamento.'
+    Write-Log 'Download Flutter: il file e grande, attendere il completamento.'
     Invoke-WebRequest -Uri $archiveUrl -OutFile $zipPath -UseBasicParsing -TimeoutSec 0
-  }else{Write-Log 'Archivio di download già presente: provo a riutilizzarlo.'}
-  Write-Log 'Estrazione SDK. Il file ZIP verrà eliminato dopo una verifica riuscita.'
+  }else{Write-Log 'Archivio di download gia presente: provo a riutilizzarlo.'}
+  Write-Log 'Estrazione SDK. Il file ZIP verra eliminato dopo una verifica riuscita.'
   Expand-Archive -LiteralPath $zipPath -DestinationPath $SdkParent -Force
-  if(-not (Test-Path $Flutter)){throw "Estrazione incompleta: non trovo $Flutter. L'archivio è stato conservato per il recupero."}
+  if(-not (Test-Path $Flutter)){throw "Estrazione incompleta: non trovo $Flutter. L'archivio e stato conservato per il recupero."}
   Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
   Invoke-Flutter @('--version')
   Write-Log 'SDK Flutter estratto correttamente.'
