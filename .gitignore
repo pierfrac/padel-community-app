@@ -38,3 +38,7 @@ secrets/
 *.keystore
 *.p12
 *.pem
+
+# Local portable Flutter SDK and launcher logs
+/runtime/
+/logs/
