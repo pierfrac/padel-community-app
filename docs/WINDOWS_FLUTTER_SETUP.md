@@ -30,7 +30,8 @@ Prima di scaricare, il launcher controlla lo spazio libero e, quando il server c
 - Fai clic sullo stato della sessione per riaprire l'indirizzo nel browser.
 - Ogni sessione usa una copia di lavoro separata e log dedicati; SDK Flutter e cache Pub vengono condivisi per evitare di riscaricarli.
 - Fermare una sessione non interrompe le altre. Chiudendo il pannello, tutte le sessioni gestite vengono arrestate.
-- Le quattro sessioni permettono di provare contemporaneamente quattro istanze dell'interfaccia; non equivalgono ancora a quattro account reali né forniscono sincronizzazione condivisa, che devono essere implementati nella app.
+- Le sessioni permettono di provare contemporaneamente quattro istanze dell'interfaccia: Sessione 1 riceve l'identità locale `admin-1`, Sessioni 2–4 ricevono `player-2`, `player-3` e `player-4`. Il ruolo è mostrato nella Home; soltanto la prima sessione vede l'area amministratore dimostrativa.
+- Queste identità sono passate come `--dart-define` al processo Flutter e servono esclusivamente a simulare la UI. Non sono account Google, credenziali firmate o autorizzazioni sicure. Le quattro sessioni non forniscono ancora sincronizzazione condivisa, che deve essere implementata nell'app.
 - Prepara ambiente: prepara SDK, cache Web e dipendenze senza avviare l'app.
 - Diagnostica: esegue `flutter doctor`; gli avvisi Android/Visual Studio non impediscono da soli l'anteprima Web.
 - Strumenti avanzati: Verifica tutto, Build Web, Analisi codice, Test e Formatta codice.
