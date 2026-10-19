@@ -2,32 +2,17 @@
 
 Flutter app for organizing padel matches and community availability.
 
-## Run on Windows without administrator rights
+## Windows launcher
 
-The repository includes a portable Flutter launcher. It downloads the official Flutter stable SDK into a local `runtime` folder and does not modify the system PATH or install Flutter globally.
+Double-click PADEL.bat to open the graphical launcher inspired by the portable TEO control panel. On first use, choose where Flutter and its caches should live: the default user profile, another disk (including an external drive), or an existing Flutter SDK.
 
-1. Clone or download the `develop` branch into a writable local folder.
-2. Double-click `PADEL.bat`.
-3. On first launch, wait for the Flutter SDK and Dart dependencies to download.
-4. The app opens in your browser at `http://127.0.0.1:7357`. Keep the terminal open while using the preview.
+The SDK, Flutter Web artifacts, Pub cache, configuration and logs are stored outside the repository by default under %LOCALAPPDATA%\PadelCommunity. This means redownloading the repository does not force another multi-gigabyte SDK download. Existing SDKs are reused when selected. The first download is still large; it is not repeated when the runtime folder is preserved.
 
-The first download is large and requires HTTPS access to the official Flutter download host. Company proxy, antivirus, or execution policies may block it.
+The panel offers preview, setup, format, analyze, test, build, check and diagnostics. The app preview is served locally at http://127.0.0.1:7357. See docs/WINDOWS_FLUTTER_SETUP.md.
 
-### Commands
+### Command-line actions
 
-Run `PADEL.bat` with one of these arguments from Command Prompt:
-
-- `setup`: install the portable SDK and fetch dependencies.
-- `web`: run the local Web preview (default).
-- `format`: format Dart source files.
-- `analyze`: run static analysis.
-- `test`: run Flutter tests.
-- `build`: compile the Web app into `build\web`.
-- `check`: format, analyze, test, and build Web in sequence.
-- `doctor`: show Flutter diagnostics.
-- `clean`: remove project build/cache folders while keeping the SDK.
-
-Detailed instructions: [docs/WINDOWS_FLUTTER_SETUP.md](docs/WINDOWS_FLUTTER_SETUP.md).
+PADEL.bat setup, web, format, analyze, test, build, check, doctor and clean are supported. Double-click without arguments opens the graphical panel.
 
 ## Current scope
 
@@ -35,4 +20,4 @@ The current screens are an interactive UI prototype and still use demonstration 
 
 ## Validation
 
-GitHub Actions is configured to format, analyze, test, and build the Web target. Until a run is confirmed successful, use `PADEL.bat check` on a Windows machine as the local validation path; no successful CI or Windows execution is claimed by this README.
+GitHub Actions is configured to format, analyze, test, and build the Web target. Until a run is confirmed successful, use the local launcher on Windows as the validation path; no successful CI or Windows execution is claimed by this README.
