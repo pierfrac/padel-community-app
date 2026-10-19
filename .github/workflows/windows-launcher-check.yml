@@ -43,7 +43,7 @@ jobs:
 
             if ($parseErrors.Count -gt 0) {
               $parseErrors | ForEach-Object {
-                Write-Error ("${file}: ${($_.Extent.StartLineNumber)}:${($_.Extent.StartColumnNumber)} ${($_.Message)}")
+                Write-Error ("{0}: {1}:{2} {3}" -f $file, $_.Extent.StartLineNumber, $_.Extent.StartColumnNumber, $_.Message)
               }
             } else {
               Write-Host "PowerShell syntax OK: $file"
