@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-[System.System.Windows.Forms.Application]::EnableVisualStyles()
+[System.Windows.Forms.Application]::EnableVisualStyles()
 $Win=$PSScriptRoot; $Root=Split-Path $Win -Parent; $Launcher=Join-Path $Win 'flutter-launcher.ps1'
 $DataRoot=Join-Path $env:LOCALAPPDATA 'PadelCommunity'; $SettingsFile=Join-Path $DataRoot 'settings.json'
 $LogDir=Join-Path $DataRoot 'logs'; $LogFile=Join-Path $LogDir 'flutter-setup.log'
@@ -13,7 +13,7 @@ try { if(Test-Path $SettingsFile){$old=Get-Content $SettingsFile -Raw|ConvertFro
 function Save-Settings {$S|ConvertTo-Json|Set-Content -LiteralPath $SettingsFile -Encoding UTF8}
 function Has-Flutter([string]$p){return [bool]($p -and (Test-Path (Join-Path $p 'bin\flutter.bat')))}
 function Show-StorageWizard {
-  $d=New-Object System.System.Windows.Forms.Form;$d.Text='Padel Community | Ambiente portabile';$d.Size=New-Object System.System.Drawing.Size(690,430);$d.StartPosition='CenterScreen';$d.FormBorderStyle='FixedDialog';$d.MaximizeBox=$false
+  $d=New-Object System.Windows.Forms.Form;$d.Text='Padel Community | Ambiente portabile';$d.Size=New-Object System.Drawing.Size(690,430);$d.StartPosition='CenterScreen';$d.FormBorderStyle='FixedDialog';$d.MaximizeBox=$false
   $d.BackColor=[System.Drawing.Color]::FromArgb(18,25,38);$d.ForeColor=[System.Drawing.Color]::FromArgb(235,240,248);$d.Font=New-Object System.Drawing.Font('Segoe UI',10)
   $h=New-Object System.Windows.Forms.Label;$h.Text='Dove teniamo Flutter?';$h.Font=New-Object System.Drawing.Font('Segoe UI Semibold',19);$h.SetBounds(24,18,620,38);$d.Controls.Add($h)
   $sub=New-Object System.Windows.Forms.Label;$sub.Text='SDK, cache Web e pacchetti possono occupare diversi GB. Scegli una posizione persistente, separata dal repository.';$sub.SetBounds(26,62,620,42);$sub.ForeColor=[System.Drawing.Color]::FromArgb(174,187,207);$d.Controls.Add($sub)
