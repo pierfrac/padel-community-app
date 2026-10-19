@@ -49,20 +49,44 @@ $change=New-Object System.Windows.Forms.Button;$change.Text='Cambia...';$change.
 $statusPanel=New-Object System.Windows.Forms.Panel;$statusPanel.SetBounds(24,218,876,74);$statusPanel.Anchor='Top,Left,Right';$statusPanel.BackColor=$panel
 $statusTitle=New-Object System.Windows.Forms.Label;$statusTitle.Text='STATO';$statusTitle.ForeColor=$muted;$statusTitle.SetBounds(14,8,90,20)
 $statusText=New-Object System.Windows.Forms.Label;$statusText.Text='Pronto. Il runtime verra controllato al primo avvio.';$statusText.SetBounds(14,34,820,25);$statusText.AutoEllipsis=$true;$statusPanel.Controls.AddRange(@($statusTitle,$statusText));$form.Controls.Add($statusPanel)
-$buttons=New-Object System.Windows.Forms.FlowLayoutPanel;$buttons.SetBounds(24,306,876,100);$buttons.Anchor='Top,Left,Right';$buttons.BackColor=$navy;$buttons.WrapContents=$true;$script:ButtonList=@()
-function Add-ActionButton([string]$label,[string]$action,[bool]$primary=$false){
+$script:ButtonList=@()
+$buttons=New-Object System.Windows.Forms.FlowLayoutPanel
+$buttons.SetBounds(24,306,876,50);$buttons.Anchor='Top,Left,Right';$buttons.BackColor=$navy;$buttons.WrapContents=$false
+$advancedButtons=New-Object System.Windows.Forms.FlowLayoutPanel
+$advancedButtons.SetBounds(24,360,876,50);$advancedButtons.Anchor='Top,Left,Right';$advancedButtons.BackColor=$navy;$advancedButtons.WrapContents=$true;$advancedButtons.Visible=$false
+function Add-ActionButton([string]$label,[string]$action,[System.Windows.Forms.Control]$targetPanel,[bool]$primary=$false){
   $b=New-Object System.Windows.Forms.Button;$b.Text=$label;$b.Tag=$action;$b.Size=New-Object System.Drawing.Size(164,40);$b.Margin='0,0,10,10';$b.FlatStyle='Flat';$b.FlatAppearance.BorderSize=0
   if($primary){$b.BackColor=$blue;$b.ForeColor=[System.Drawing.Color]::White}else{$b.BackColor=$panel;$b.ForeColor=$ink}
-  $actionName=$action;$b.Add_Click({Invoke-Action $actionName}.GetNewClosure());$buttons.Controls.Add($b);$script:ButtonList+=$b
+  $actionName=$action;$b.Add_Click({Invoke-Action $actionName}.GetNewClosure());$targetPanel.Controls.Add($b);$script:ButtonList+=$b
 }
-Add-ActionButton '>  Avvia anteprima' 'web' $true;Add-ActionButton 'Prepara ambiente' 'setup';Add-ActionButton 'Verifica tutto' 'check';Add-ActionButton 'Build Web' 'build';Add-ActionButton 'Analisi codice' 'analyze';Add-ActionButton 'Test' 'test';Add-ActionButton 'Formatta codice' 'format';Add-ActionButton 'Diagnostica' 'doctor'
-$form.Controls.Add($buttons)
+Add-ActionButton '>  Avvia anteprima' 'web' $buttons $true
+Add-ActionButton 'Prepara ambiente' 'setup' $buttons
+Add-ActionButton 'Diagnostica' 'doctor' $buttons
+$advancedToggle=New-Object System.Windows.Forms.Button
+$advancedToggle.Text='Strumenti avanzati ▸';$advancedToggle.Size=New-Object System.Drawing.Size(164,40);$advancedToggle.Margin='0,0,10,10';$advancedToggle.FlatStyle='Flat';$advancedToggle.FlatAppearance.BorderSize=0;$advancedToggle.BackColor=$panel;$advancedToggle.ForeColor=$muted
+$buttons.Controls.Add($advancedToggle);$script:ButtonList+=$advancedToggle
+Add-ActionButton 'Verifica tutto' 'check' $advancedButtons
+Add-ActionButton 'Build Web' 'build' $advancedButtons
+Add-ActionButton 'Analisi codice' 'analyze' $advancedButtons
+Add-ActionButton 'Test' 'test' $advancedButtons
+Add-ActionButton 'Formatta codice' 'format' $advancedButtons
+$form.Controls.Add($buttons);$form.Controls.Add($advancedButtons)
 $bottom=New-Object System.Windows.Forms.FlowLayoutPanel;$bottom.Dock='Bottom';$bottom.Height=44;$bottom.Padding='18,5,10,5';$bottom.BackColor=$panel
 function Add-LinkButton($label,$handler){$b=New-Object System.Windows.Forms.Button;$b.Text=$label;$b.AutoSize=$true;$b.FlatStyle='Flat';$b.BackColor=$panel;$b.ForeColor=$muted;$b.Add_Click($handler);$bottom.Controls.Add($b)}
 Add-LinkButton 'Apri cartella runtime' { $p=Split-Path ([string]$S.FlutterRoot) -Parent;if(-not(Test-Path $p)){New-Item -ItemType Directory -Force -Path $p|Out-Null};Start-Process explorer.exe $p }
 Add-LinkButton 'Apri log' { if(Test-Path $LogFile){Start-Process notepad.exe $LogFile}else{[System.Windows.Forms.MessageBox]::Show('Nessun log creato ancora.','Padel Community')|Out-Null} }
 Add-LinkButton 'Apri repository' { Start-Process explorer.exe $Root };$form.Controls.Add($bottom)
-$logbox=New-Object System.Windows.Forms.RichTextBox;$logbox.SetBounds(24,416,876,218);$logbox.Anchor='Top,Bottom,Left,Right';$logbox.ReadOnly=$true;$logbox.BackColor=[System.Drawing.Color]::FromArgb(10,15,24);$logbox.ForeColor=$ink;$logbox.Font=New-Object System.Drawing.Font('Consolas',9);$logbox.BorderStyle='FixedSingle';$form.Controls.Add($logbox)
+$logbox=New-Object System.Windows.Forms.RichTextBox;$logbox.SetBounds(24,366,876,268);$logbox.Anchor='Top,Bottom,Left,Right';$logbox.ReadOnly=$true;$logbox.BackColor=[System.Drawing.Color]::FromArgb(10,15,24);$logbox.ForeColor=$ink;$logbox.Font=New-Object System.Drawing.Font('Consolas',9);$logbox.BorderStyle='FixedSingle';$form.Controls.Add($logbox)
+$advancedToggle.Add_Click({
+  $advancedButtons.Visible=-not $advancedButtons.Visible
+  if($advancedButtons.Visible){
+    $advancedToggle.Text='Nascondi strumenti'
+    $logbox.SetBounds(24,416,876,218)
+  }else{
+    $advancedToggle.Text='Strumenti avanzati ▸'
+    $logbox.SetBounds(24,366,876,268)
+  }
+}.GetNewClosure())
 $footer=New-Object System.Windows.Forms.Label;$footer.Text='Runtime e log restano fuori dalla cartella Git.';$footer.ForeColor=$muted;$footer.SetBounds(26,640,700,20);$footer.Anchor='Bottom,Left';$form.Controls.Add($footer)
 $script:Proc=$null;$script:Positions=@{}
 foreach($f in @($LogFile,$OutFile,$ErrFile)){$script:Positions[$f]=0}
