@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:padel_community_app/app/test_identity.dart';
+
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -24,6 +26,50 @@ class HomePage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
           children: [
+            if (TestIdentity.isEnabled) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: TestIdentity.isAdmin
+                      ? const Color(0xFFE4F3EB)
+                      : const Color(0xFFE8F0FF),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      TestIdentity.isAdmin
+                          ? Icons.admin_panel_settings_rounded
+                          : Icons.person_rounded,
+                      color: TestIdentity.isAdmin
+                          ? const Color(0xFF146C5A)
+                          : const Color(0xFF315EA8),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            TestIdentity.isAdmin
+                                ? 'ADMIN · TEST LOCALE'
+                                : 'GIOCATORE · TEST LOCALE',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          Text(
+                            'Identità simulata: ${TestIdentity.userId}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             const Text(
               'Il prossimo match\ncomincia qui.',
               style: TextStyle(
@@ -65,6 +111,30 @@ class HomePage extends StatelessWidget {
                 ),
               ),
             ),
+            if (TestIdentity.isAdmin) ...[
+              const SizedBox(height: 24),
+              const _SectionHeading(
+                title: 'Area amministratore',
+                subtitle: 'Visibile solo nella sessione 1 di test',
+              ),
+              const SizedBox(height: 12),
+              const Card(
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Color(0xFFE4F3EB),
+                    foregroundColor: Color(0xFF146C5A),
+                    child: Icon(Icons.admin_panel_settings_rounded),
+                  ),
+                  title: Text(
+                    'Circoli, campi e prenotazioni',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(
+                    'Area dimostrativa: i permessi reali non sono ancora collegati.',
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 28),
             const _SectionHeading(
               title: 'La tua settimana',
