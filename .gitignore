@@ -1,0 +1,40 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub/
+.pub-cache/
+build/
+coverage/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+*.sw?
+.DS_Store
+
+# Android
+/android/local.properties
+/android/key.properties
+/android/*.jks
+/android/app/google-services.json
+
+# iOS
+/ios/Flutter/.last_build_id
+/ios/Runner/GeneratedPluginRegistrant.*
+/ios/Runner/GoogleService-Info.plist
+/ios/Pods/
+/ios/.symlinks/
+/ios/Flutter/ephemeral/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+secrets/
+*.keystore
+*.p12
+*.pem
