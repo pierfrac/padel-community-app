@@ -55,19 +55,21 @@ function Test-FlutterArchive([string]$Path,[string]$ExpectedSha256){
   }catch{return $false}
 }
 function Add-GitRuntimeToPath([string]$GitHome){
+  # Preserve the intended order: cmd\git.exe is the stable entry point.
   $dirs=@(
     (Join-Path $GitHome 'cmd'),
     (Join-Path $GitHome 'ucrt64\bin'),
     (Join-Path $GitHome 'mingw64\bin'),
     (Join-Path $GitHome 'usr\bin')
   )
+  $existing=@($env:PATH -split ';' | ForEach-Object{$_.TrimEnd('\')})
+  $prefix=New-Object System.Collections.Generic.List[string]
   foreach($dir in $dirs){
-    if(Test-Path -LiteralPath $dir){
-      $normalized=$dir.TrimEnd('\')
-      $pathParts=@($env:PATH -split ';' | ForEach-Object{$_.TrimEnd('\')})
-      if($pathParts -notcontains $normalized){$env:PATH=$dir+';'+$env:PATH}
+    if((Test-Path -LiteralPath $dir) -and $existing -notcontains $dir.TrimEnd('\')){
+      $prefix.Add($dir)
     }
   }
+  if($prefix.Count -gt 0){$env:PATH=($prefix -join ';')+';'+$env:PATH}
 }
 function Ensure-Git{
   $systemGit=Get-Command git.exe -ErrorAction SilentlyContinue
