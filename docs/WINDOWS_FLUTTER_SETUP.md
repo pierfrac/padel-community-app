@@ -30,8 +30,11 @@ Prima di scaricare, il launcher controlla lo spazio libero e, quando il server c
 - Fai clic sullo stato della sessione per riaprire l'indirizzo nel browser.
 - Ogni sessione usa una copia di lavoro separata e log dedicati; SDK Flutter e cache Pub vengono condivisi per evitare di riscaricarli.
 - Fermare una sessione non interrompe le altre. Chiudendo il pannello, tutte le sessioni gestite vengono arrestate.
-- Le sessioni permettono di provare contemporaneamente quattro istanze dell'interfaccia: Sessione 1 riceve l'identità locale `admin-1`, Sessioni 2–4 ricevono `player-2`, `player-3` e `player-4`. Il ruolo è mostrato nella Home; soltanto la prima sessione vede l'area amministratore dimostrativa.
-- Queste identità sono passate come `--dart-define` al processo Flutter e servono esclusivamente a simulare la UI. Non sono account Google, credenziali firmate o autorizzazioni sicure. Le quattro sessioni non forniscono ancora sincronizzazione condivisa, che deve essere implementata nell'app.
+- La Sessione 1 è predisposta per il login Google reale; le Sessioni 2–4 usano le identità sintetiche `player-2`, `player-3` e `player-4` e non richiedono tre ulteriori account email. La prima sessione mostra l'area amministratore dimostrativa soltanto dopo aver completato il login Google.
+- Per configurare il Google OAuth Web Client ID, aggiungi la proprietà `GoogleClientId` al file `%LOCALAPPDATA%\\PadelCommunity\\settings.json`, oppure imposta la variabile d'ambiente `PADEL_GOOGLE_CLIENT_ID` prima di avviare il pannello. È un identificativo client pubblico, non un client secret. Il launcher inserisce il meta tag Google nel solo workspace locale della Sessione 1, non nei sorgenti del repository.
+- Nelle credenziali OAuth di Google configura come Authorized JavaScript origins `http://localhost` e `http://localhost:7357` (la porta preferita della Sessione 1). Se il pannello assegna una porta diversa, aggiungi anche l'origine esatta mostrata nel pannello e riavvia la sessione.
+- Il login Google identifica il conto usato per questo test, ma l'autorizzazione admin verificabile dai peer è ancora da implementare. Le identità sintetiche sono solo UI di test e non sono credenziali sicure. Le quattro sessioni non forniscono ancora trasporto P2P o sincronizzazione condivisa.
+- La direzione architetturale del progetto è P2P/local-first, senza server applicativo o database centrale obbligatorio: vedi [P2P_ARCHITECTURE.md](P2P_ARCHITECTURE.md).
 - Prepara ambiente: prepara SDK, cache Web e dipendenze senza avviare l'app.
 - Diagnostica: esegue `flutter doctor`; gli avvisi Android/Visual Studio non impediscono da soli l'anteprima Web.
 - Strumenti avanzati: Verifica tutto, Build Web, Analisi codice, Test e Formatta codice.
