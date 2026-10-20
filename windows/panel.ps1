@@ -278,9 +278,10 @@ function Sync-SessionWorkspace([hashtable]$session){
 }
 function Start-Session([string]$id){
   $session=$script:Sessions[$id]
-  $role=if($id -eq '1'){'admin'}else{'player'}
+  $role=if($id -eq '1'){'google-admin'}else{'player'}
   $userId=if($id -eq '1'){'admin-1'}else{"player-$id"}
-  $roleLabel=if($id -eq '1'){'ADMIN'}else{'GIOCATORE'}
+  $roleLabel=if($id -eq '1'){'ADMIN · GOOGLE'}else{'GIOCATORE'}
+  $googleClientId=if($S.GoogleClientId){[string]$S.GoogleClientId}else{[string]$env:PADEL_GOOGLE_CLIENT_ID}
   if($script:Proc -and -not $script:Proc.HasExited){
     Add-PanelLog '[panel] Attendi la fine dell operazione in corso prima di avviare una sessione.'
     return
@@ -307,6 +308,9 @@ function Start-Session([string]$id){
       '-TestRole',$role,
       '-TestUserId',$userId
     )
+    if(-not [string]::IsNullOrWhiteSpace($googleClientId)){
+      $launcherArgs+=@('-GoogleClientId',('"{0}"' -f $googleClientId))
+    }
     $session.Proc=Start-Process -FilePath 'powershell.exe' -ArgumentList $launcherArgs -WorkingDirectory $session.Workspace -WindowStyle Hidden -PassThru -RedirectStandardOutput $session.OutFile -RedirectStandardError $session.ErrFile
     $null=$session.Proc.Handle
     $session.Port=$port
@@ -317,6 +321,9 @@ function Start-Session([string]$id){
     $session.StatusLabel.ForeColor=$green
     $statusText.Text=("Sessione {0} ({1}) in avvio su http://127.0.0.1:{2}" -f $id,$roleLabel,$port)
     Add-PanelLog ("[panel] Sessione {0} configurata come {1} ({2}) e partita sulla porta {3}." -f $id,$role,$userId,$port)
+    if($id -eq '1' -and [string]::IsNullOrWhiteSpace($googleClientId)){
+      Add-PanelLog '[panel] Configura GoogleClientId in %LOCALAPPDATA%\\PadelCommunity\\settings.json oppure la variabile PADEL_GOOGLE_CLIENT_ID per usare il login Google reale.'
+    }
   }catch{
     $session.Proc=$null
     $session.Port=0
