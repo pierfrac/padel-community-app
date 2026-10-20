@@ -472,15 +472,24 @@ function Ensure-Toolchain{
 }
 function Set-GoogleWebClientIdMetaTag([string]$ClientId){
   if([string]::IsNullOrWhiteSpace($ClientId)){return}
-  $index=Join-Path $Root 'web\\index.html'
+  $index=Join-Path (Join-Path $Root 'web') 'index.html'
   if(-not (Test-Path -LiteralPath $index)){throw "Web index non trovato per configurare Google Sign-In: $index"}
   $html=[IO.File]::ReadAllText($index)
   $safeClientId=[System.Net.WebUtility]::HtmlEncode($ClientId.Trim())
   $meta='<meta name="google-signin-client_id" content="{0}">' -f $safeClientId
-  if($html -match '(?is)<meta\\s+name=["'']google-signin-client_id["''][^>]*>'){
-    $html=[regex]::Replace($html,'(?is)<meta\\s+name=["'']google-signin-client_id["''][^>]*>',$meta,1)
-  }elseif($html -match '(?is)<head[^>]*>'){
-    $html=[regex]::Replace($html,'(?is)<head[^>]*>','function Prepare-Web{
+  $metaMatch=[regex]::Match($html,'(?is)<meta\s+name=["'']google-signin-client_id["''][^>]*>')
+  if($metaMatch.Success){
+    $html=$html.Remove($metaMatch.Index,$metaMatch.Length).Insert($metaMatch.Index,$meta)
+  }else{
+    $headMatch=[regex]::Match($html,'(?is)<head[^>]*>')
+    if(-not $headMatch.Success){throw "Non trovo il tag <head> in $index per configurare Google Sign-In."}
+    $insertAt=$headMatch.Index+$headMatch.Length
+    $html=$html.Insert($insertAt,[Environment]::NewLine+'  '+$meta)
+  }
+  [IO.File]::WriteAllText($index,$html,[System.Text.UTF8Encoding]::new($false))
+  Write-Log 'Google OAuth Web Client ID inserito nel solo workspace di test; il valore non viene scritto nel sorgente del repository.'
+}
+function Prepare-Web{
 '+[Environment]::NewLine+'  '+$meta,1)
   }else{
     throw "Non trovo il tag <head> in $index per configurare Google Sign-In."
