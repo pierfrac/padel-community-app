@@ -470,6 +470,24 @@ function Ensure-Toolchain{
     $mutex.Dispose()
   }
 }
+function Set-GoogleWebClientIdMetaTag([string]$ClientId){
+  if([string]::IsNullOrWhiteSpace($ClientId)){return}
+  $index=Join-Path $Root 'web\\index.html'
+  if(-not (Test-Path -LiteralPath $index)){throw "Web index non trovato per configurare Google Sign-In: $index"}
+  $html=[IO.File]::ReadAllText($index)
+  $safeClientId=[System.Net.WebUtility]::HtmlEncode($ClientId.Trim())
+  $meta='<meta name="google-signin-client_id" content="{0}">' -f $safeClientId
+  if($html -match '(?is)<meta\\s+name=["'']google-signin-client_id["''][^>]*>'){
+    $html=[regex]::Replace($html,'(?is)<meta\\s+name=["'']google-signin-client_id["''][^>]*>',$meta,1)
+  }elseif($html -match '(?is)<head[^>]*>'){
+    $html=[regex]::Replace($html,'(?is)<head[^>]*>','function Prepare-Web{
+'+[Environment]::NewLine+'  '+$meta,1)
+  }else{
+    throw "Non trovo il tag <head> in $index per configurare Google Sign-In."
+  }
+  [IO.File]::WriteAllText($index,$html,[System.Text.UTF8Encoding]::new($false))
+  Write-Log 'Google OAuth Web Client ID inserito nel solo workspace di test; il valore non viene scritto nel sorgente del repository.'
+}
 function Prepare-Web{
   # Sessions have separate project folders but share the Flutter SDK/cache.
   # Serialize SDK setup so two launches cannot update the Web cache concurrently.
@@ -508,6 +526,9 @@ try{
     'setup' { Prepare-Web; Write-Log 'Setup completato. Premi Avvia anteprima nel pannello.' }
     'web' {
       Prepare-Web
+      if($TestRole -eq 'google-admin' -and -not [string]::IsNullOrWhiteSpace($GoogleClientId)){
+        Set-GoogleWebClientIdMetaTag $GoogleClientId
+      }
       if($RequestedPort -gt 0){
         $Port=Get-FreeLoopbackPort $RequestedPort $RequestedPort $RequestedPort
       }else{
