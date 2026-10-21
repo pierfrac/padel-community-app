@@ -110,9 +110,10 @@ function Sync-BranchSources {
       $encodedBranch = [Uri]::EscapeDataString($branch)
       $uri = "$GitHubApi/repos/$($repository.owner.login)/$($repository.name)/contents/apps-script/$name" + "?ref=" + $encodedBranch
       $item = Invoke-GitHubApi $uri
-      if ($item.type -ne "file" -or -not $item.download_url) { throw "Il percorso apps-script/$name non esiste come file nel branch '$branch'." }
+      if ($item.type -ne "file" -or -not $item.content) { throw "Il percorso apps-script/$name non esiste come file leggibile nel branch '$branch'." }
       $destination = Join-Path $stage $name
-      Invoke-WebRequest -Uri $item.download_url -OutFile $destination -Headers (Get-GitHubHeaders $script:GitHubToken)
+      $bytes = [Convert]::FromBase64String(($item.content -replace "\s",""))
+      [IO.File]::WriteAllBytes($destination, $bytes)
       if (-not (Test-Path $destination) -or (Get-Item $destination).Length -eq 0) { throw "Download vuoto o fallito per $name." }
       Write-Host "  Verificato: $name"
     }
