@@ -49,7 +49,7 @@ button{border:0;border-radius:999px;padding:12px 17px;background:var(--green);co
 <footer class="muted small" style="padding:18px 4px">MVP in prova. Per usare la community servono il deployment Apps Script e la configurazione OAuth del proprietario. Le iscrizioni sono limitate a quattro persone per partita.</footer>
 </main>
 <script>
-const GOOGLE_CLIENT_ID = <?= JSON.stringify(googleClientId) ?>;
+const GOOGLE_CLIENT_ID = <?!= JSON.stringify(googleClientId) ?>;
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 let idToken="",user=null,data={players:[],matches:[],registrations:[]},driveToken="",driveFileId="",privateFeedback={};
 const $=id=>document.getElementById(id);
