@@ -387,22 +387,21 @@ function formatAcceptsGender_(format, gender) {
 }
 
 function matchScore_(match, currentPlayers, candidate, requestingUserId) {
-  const positions = currentPlayers.map(function(player) {
-    const profile = getUser_(player.userId);
-    return profile ? profile.position : '';
-  });
-  const occupied = positions.filter(function(position) { return position === 'Right' || position === 'Left'; });
-  let position = candidate.position === 'Either' ? 12 : 0;
-  let positionReason = candidate.position === 'Either' ? 'Posizione indifferente' : 'Posizione complementare';
-  if (candidate.position === 'Right' && occupied.indexOf('Left') >= 0) position = 30;
-  if (candidate.position === 'Left' && occupied.indexOf('Right') >= 0) position = 30;
-  if (candidate.position === 'Right' && occupied.indexOf('Right') >= 0 && occupied.indexOf('Left') < 0) {
-    position = -5;
-    positionReason = 'Stessa posizione preferita del giocatore già presente';
-  }
-  if (candidate.position === 'Left' && occupied.indexOf('Left') >= 0 && occupied.indexOf('Right') < 0) {
-    position = -5;
-    positionReason = 'Stessa posizione preferita del giocatore già presente';
+  const requester = getUser_(requestingUserId);
+  const preferred = requester ? requester.position : 'Either';
+  let position = 12;
+  let positionReason = 'Posizione indifferente';
+  if (preferred === 'Right') {
+    if (candidate.position === 'Left') { position = 30; positionReason = 'Gioca a sinistra: completa la tua destra'; }
+    else if (candidate.position === 'Either') { position = 15; positionReason = 'Posizione indifferente: buona alternativa'; }
+    else { position = -5; positionReason = 'Preferisce la tua stessa posizione'; }
+  } else if (preferred === 'Left') {
+    if (candidate.position === 'Right') { position = 30; positionReason = 'Gioca a destra: completa la tua sinistra'; }
+    else if (candidate.position === 'Either') { position = 15; positionReason = 'Posizione indifferente: buona alternativa'; }
+    else { position = -5; positionReason = 'Preferisce la tua stessa posizione'; }
+  } else {
+    position = candidate.position === 'Either' ? 12 : 20;
+    positionReason = candidate.position === 'Either' ? 'Entrambi indifferenti' : 'Posizione definita, compatibile con la tua flessibilità';
   }
 
   const difference = Math.abs(CATEGORIES.indexOf(candidate.category) - CATEGORIES.indexOf(match.category));
