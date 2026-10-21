@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="google-signin-client_id" content="<?= googleClientId ?>">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+      :root{font-family:Inter,Arial,sans-serif;color:#17221f;background:#f5f7f6;font-synthesis:none}
+      *{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}
+      header{background:#fff;border-bottom:1px solid #e0e8e3;padding:18px max(20px,calc((100% - 1050px)/2));display:flex;align-items:center;justify-content:space-between;gap:16px}
+      .brand{font-size:20px;font-weight:800;letter-spacing:-.5px}.brand span{color:#146c5a}
+      main{max-width:1050px;margin:0 auto;padding:26px 20px 60px}
+      h1{font-size:clamp(28px,5vw,42px);line-height:1.05;letter-spacing:-1.5px;margin:8px 0 12px}
+      h2{font-size:21px;margin:0 0 14px}.muted{color:#68756f;line-height:1.5}.small{font-size:12px}
+      .panel,.match{background:#fff;border:1px solid #e0e8e3;border-radius:18px;padding:20px;margin:16px 0}
+      .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+      label{display:block;font-size:13px;font-weight:700;margin-bottom:6px}
+      input,select{width:100%;padding:12px;border:1px solid #cbd6d0;border-radius:10px;background:#fff;color:#17221f}
+      button{border:0;border-radius:10px;padding:11px 15px;background:#146c5a;color:#fff;font-weight:700;cursor:pointer}
+      button.secondary{background:#e8f1ed;color:#146c5a}button:disabled{opacity:.5;cursor:wait}
+      .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+      .toprow{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+      .badge{display:inline-block;padding:5px 8px;border-radius:7px;background:#e4f3eb;color:#146c5a;font-size:11px;font-weight:800}
+      .match-title{font-size:18px;font-weight:800;margin:10px 0 6px}
+      .error{color:#b3261e}.success{color:#146c5a}.hidden{display:none!important}
+      .score{font-size:12px;color:#146c5a;font-weight:800}.match-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+      .player{padding:10px 0;border-bottom:1px solid #edf1ef}.player:last-child{border-bottom:0}
+      #status{min-height:22px;margin:12px 0;font-size:13px}.empty{padding:22px 8px;text-align:center;color:#68756f}
+      #signin{margin-top:18px}
+      @media(max-width:640px){.grid{grid-template-columns:1fr}header{padding:16px 20px}.panel,.match{padding:16px}}
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">PADEL <span>COMMUNITY</span></div>
+      <div id="user-tools" class="hidden"><span id="user-label" class="small"></span> <button class="secondary" onclick="signOut()">Esci</button></div>
+    </header>
+    <main>
+      <section id="welcome" class="panel">
+        <span class="badge">COMMUNITY · BETA</span>
+        <h1>La prossima partita<br>comincia qui.</h1>
+        <p class="muted">Trova compagni compatibili per livello e posizione, organizza il campo e migliora i prossimi abbinamenti con feedback privati.</p>
+        <div id="signin"></div>
+        <p id="login-hint" class="muted small">Accedi con un account Gmail personale. Non servono quattro email di test per iniziare.</p>
+      </section>
+
+      <div id="app" class="hidden">
+        <div id="status" role="status"></div>
+        <section class="panel">
+          <div class="toprow"><h2>Il tuo profilo</h2><span id="role" class="badge">GIOCATORE</span></div>
+          <div class="grid">
+            <div><label for="profile-name">Nome da mostrare</label><input id="profile-name" maxlength="80" autocomplete="name"></div>
+            <div><label for="profile-category">Livello</label><select id="profile-category"></select></div>
+            <div><label for="profile-position">Posizione preferita</label><select id="profile-position"><option value="Right">Destra</option><option value="Left">Sinistra</option><option value="Either">Indifferente</option></select></div>
+            <div><label for="profile-gender">Genere per il formato partita</label><select id="profile-gender"><option value="Male">Maschile</option><option value="Female">Femminile</option></select></div>
+          </div>
+          <div class="actions"><button onclick="saveProfile()">Salva profilo</button><span class="muted small">Gli utenti possono essere molti: non c'è un limite a quattro profili.</span></div>
+        </section>
+
+        <section class="panel">
+          <h2>Apri una partita</h2>
+          <div class="grid">
+            <div><label for="match-format">Formato</label><select id="match-format"></select></div>
+            <div><label for="match-category">Livello richiesto</label><select id="match-category"></select></div>
+            <div><label for="match-date">Data e ora</label><input id="match-date" type="datetime-local"></div>
+            <div><label for="match-area">Zona / città</label><input id="match-area" maxlength="100" placeholder="Es. Roma nord"></div>
+          </div>
+          <div class="actions"><button onclick="createMatch()">Pubblica richiesta</button></div>
+        </section>
+
+        <section>
+          <div class="toprow"><h2>Partite della community</h2><button class="secondary" onclick="refresh()">Aggiorna</button></div>
+          <div id="matches"></div>
+        </section>
+
+        <section id="admin-panel" class="panel hidden">
+          <h2>Strumenti admin</h2>
+          <p class="muted small">Solo gli indirizzi elencati in ADMIN_EMAILS nelle Script Properties possono usare queste funzioni.</p>
+          <div class="grid">
+            <div><label for="court-name">Nome circolo / campo</label><input id="court-name" maxlength="100"></div>
+            <div><label for="court-address">Indirizzo</label><input id="court-address" maxlength="200"></div>
+          </div>
+          <div class="actions"><button onclick="addCourt()">Aggiungi campo</button></div>
+          <div id="admin-courts"></div>
+        </section>
+      </div>
+    </main>
+    <script>
+      const GOOGLE_CLIENT_ID = '<?= googleClientId ?>';
+      const state = { token: '', data: null, busy: false };
+      const categories = ['Bronze','Silver','Silver-Gold','Gold','Gold+'];
+      const positions = ['Right','Left','Either'];
+      const positionLabels = {Right:'Destra',Left:'Sinistra',Either:'Indifferente'};
+      const formatLabels = {'Mens doubles':'Doppio maschile','Womens doubles':'Doppio femminile','Mixed doubles':'Doppio misto'};
+      const categoryLabels = {'Bronze':'Bronze','Silver':'Silver','Silver-Gold':'Silver-Gold','Gold':'Gold','Gold+':'Gold+'};
+
+      function setStatus(message, kind) {
+        const el = document.getElementById('status');
+        el.textContent = message || '';
+        el.className = kind || '';
+      }
+      function fail(error) {
+        state.busy = false;
+        setStatus(error && error.message ? error.message : String(error), 'error');
+      }
+      function call(name, ...args) {
+        state.busy = true;
+        setStatus('Un momento…');
+        return new Promise((resolve, reject) => {
+          const runner = google.script.run.withSuccessHandler(value => {
+            state.busy = false; setStatus(''); resolve(value);
+          }).withFailureHandler(error => { state.busy = false; reject(error); });
+          runner[name](state.token, ...args);
+        });
+      }
+      function init() {
+        if (!GOOGLE_CLIENT_ID) {
+          document.getElementById('login-hint').textContent =
+            'Configurazione mancante: imposta GOOGLE_CLIENT_ID nelle Script Properties e ridistribuisci la web app.';
+          return;
+        }
+        const wait = setInterval(() => {
+          if (window.google && google.accounts && google.accounts.id) {
+            clearInterval(wait);
+            google.accounts.id.initialize({client_id: GOOGLE_CLIENT_ID, callback: onCredential});
+            google.accounts.id.renderButton(document.getElementById('signin'), {
+              theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with', width: 260
+            });
+          }
+        }, 100);
+      }
+      function onCredential(response) {
+        state.token = response.credential;
+        call('apiBootstrap').then(data => {
+          state.data = data;
+          document.getElementById('welcome').classList.add('hidden');
+          document.getElementById('app').classList.remove('hidden');
+          document.getElementById('user-tools').classList.remove('hidden');
+          document.getElementById('user-label').textContent = data.user.email;
+          document.getElementById('role').textContent = data.isAdmin ? 'ADMIN' : 'GIOCATORE';
+          document.getElementById('admin-panel').classList.toggle('hidden', !data.isAdmin);
+          fillOptions();
+          renderProfile(data.user);
+          renderMatches(data.matches);
+          if (data.isAdmin) renderAdminCourts();
+        }).catch(error => {
+          state.token = '';
+          document.getElementById('welcome').classList.remove('hidden');
+          fail(error);
+        });
+      }
+      function fillOptions() {
+        const cat = document.getElementById('profile-category');
+        const matchCat = document.getElementById('match-category');
+        cat.innerHTML = ''; matchCat.innerHTML = '';
+        categories.forEach(value => {
+          cat.add(new Option(value, value));
+          matchCat.add(new Option(value, value));
+        });
+        const format = document.getElementById('match-format');
+        format.innerHTML = '';
+        Object.keys(formatLabels).forEach(value => format.add(new Option(formatLabels[value], value)));
+      }
+      function renderProfile(user) {
+        document.getElementById('profile-name').value = user.name || '';
+        document.getElementById('profile-category').value = user.category || 'Silver';
+        document.getElementById('profile-position').value = user.position || 'Either';
+        document.getElementById('profile-gender').value = user.gender || 'Male';
+        document.getElementById('match-category').value = user.category || 'Silver';
+      }
+      async function saveProfile() {
+        try {
+          const data = await call('apiSaveProfile', {
+            name: document.getElementById('profile-name').value,
+            category: document.getElementById('profile-category').value,
+            position: document.getElementById('profile-position').value,
+            gender: document.getElementById('profile-gender').value
+          });
+          state.data = data; renderMatches(data.matches);
+          setStatus('Profilo salvato.', 'success');
+        } catch (error) { fail(error); }
+      }
+      async function createMatch() {
+        try {
+          const data = await call('apiCreateMatch', {
+            format: document.getElementById('match-format').value,
+            category: document.getElementById('match-category').value,
+            startsAt: document.getElementById('match-date').value,
+            area: document.getElementById('match-area').value
+          });
+          state.data = data; renderMatches(data.matches);
+          setStatus('Richiesta pubblicata.', 'success');
+        } catch (error) { fail(error); }
+      }
+      async function joinMatch(id) {
+        try {
+          const data = await call('apiJoinMatch', id);
+          state.data = data; renderMatches(data.matches);
+          setStatus('Ti sei iscritto alla partita.', 'success');
+        } catch (error) { fail(error); }
+      }
+      async function refresh() {
+        try {
+          const data = await call('apiBootstrap');
+          state.data = data; renderMatches(data.matches);
+        } catch (error) { fail(error); }
+      }
+      function renderMatches(matches) {
+        const root = document.getElementById('matches');
+        root.innerHTML = '';
+        if (!matches || !matches.length) {
+          root.innerHTML = '<div class="panel empty">Ancora nessuna partita. Pubblica la prima richiesta.</div>';
+          return;
+        }
+        matches.forEach(match => {
+          const card = document.createElement('article');
+          card.className = 'match';
+          const date = new Date(match.startsAt);
+          const dateLabel = isNaN(date.getTime()) ? 'Data da definire' :
+            date.toLocaleString('it-IT',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+          const title = document.createElement('div'); title.className = 'match-title';
+          title.textContent = (formatLabels[match.format] || match.format) + ' · ' + match.category;
+          const info = document.createElement('div'); info.className = 'muted';
+          info.textContent = dateLabel + ' · ' + match.area;
+          const badge = document.createElement('span'); badge.className = 'badge';
+          badge.textContent = match.playerCount + '/4 · ' + statusLabel(match.status);
+          card.append(title, info, badge);
+          const actions = document.createElement('div'); actions.className = 'match-actions';
+          if (match.canJoin) {
+            const join = document.createElement('button'); join.textContent = 'Mi candido';
+            join.onclick = () => joinMatch(match.id); actions.appendChild(join);
+          }
+          const recommend = document.createElement('button'); recommend.className = 'secondary';
+          recommend.textContent = 'Match Score'; recommend.onclick = () => showRecommendations(match.id);
+          actions.appendChild(recommend);
+          if (state.data && state.data.isAdmin && match.status === 'Awaiting court') {
+            const confirm = document.createElement('button'); confirm.textContent = 'Assegna campo';
+            confirm.onclick = () => assignCourt(match.id); actions.appendChild(confirm);
+          }
+          if (state.data && state.data.isAdmin && match.status === 'Confirmed') {
+            const complete = document.createElement('button'); complete.className = 'secondary';
+            complete.textContent = 'Segna completata'; complete.onclick = () => completeMatch(match.id);
+            actions.appendChild(complete);
+          }
+          card.appendChild(actions);
+          const details = document.createElement('div'); details.id = 'recommendations-' + match.id;
+          card.appendChild(details);
+          root.appendChild(card);
+        });
+      }
+      function statusLabel(status) {
+        return ({Open:'Aperta',Forming:'In formazione','Awaiting court':'In attesa del campo',Confirmed:'Confermata',Completed:'Completata'})[status] || status;
+      }
+      async function showRecommendations(id) {
+        try {
+          const suggestions = await call('apiRecommendations', id);
+          const root = document.getElementById('recommendations-' + id);
+          root.innerHTML = '';
+          if (!suggestions.length) { root.textContent = 'Nessun candidato compatibile disponibile.'; return; }
+          suggestions.forEach(s => {
+            const row = document.createElement('div'); row.className = 'player';
+            const title = document.createElement('strong'); title.textContent = s.name + ' · ' + s.category + ' · ' + (positionLabels[s.position] || s.position);
+            const score = document.createElement('div'); score.className = 'score'; score.textContent = 'Match Score ' + s.matchScore + ' · ' + s.explanation;
+            row.append(title, score); root.appendChild(row);
+          });
+        } catch (error) { fail(error); }
+      }
+      async function renderAdminCourts() {
+        try {
+          const courts = await call('apiListCourts');
+          const root = document.getElementById('admin-courts'); root.innerHTML = '';
+          courts.forEach(c => {
+            const item = document.createElement('div'); item.className = 'player';
+            item.textContent = c.name + ' · ' + c.address + ' ';
+            root.appendChild(item);
+          });
+        } catch (error) { fail(error); }
+      }
+      async function addCourt() {
+        try {
+          await call('apiAdminAddCourt', {
+            name: document.getElementById('court-name').value,
+            address: document.getElementById('court-address').value
+          });
+          document.getElementById('court-name').value = '';
+          document.getElementById('court-address').value = '';
+          await renderAdminCourts();
+          setStatus('Campo aggiunto.', 'success');
+        } catch (error) { fail(error); }
+      }
+      async function assignCourt(matchId) {
+        const courts = await call('apiListCourts').catch(fail);
+        if (!courts || !courts.length) { setStatus('Prima aggiungi un campo nell’area admin.', 'error'); return; }
+        const choice = prompt('Inserisci il numero del campo:\n' + courts.map((c,i) => (i+1)+'. '+c.name+' · '+c.address).join('\n'));
+        const index = Number(choice) - 1;
+        if (!Number.isInteger(index) || index < 0 || index >= courts.length) return;
+        try {
+          const data = await call('apiAssignCourtAndConfirm', matchId, courts[index].courtId);
+          state.data = data; renderMatches(data.matches);
+          setStatus('Partita confermata e inviti calendario inviati.', 'success');
+        } catch (error) { fail(error); }
+      }
+      async function completeMatch(matchId) {
+        try {
+          const data = await call('apiCompleteMatch', matchId);
+          state.data = data; renderMatches(data.matches);
+          setStatus('Partita completata. I giocatori possono inviare feedback privato e risultato.', 'success');
+        } catch (error) { fail(error); }
+      }
+      function signOut() {
+        state.token = ''; state.data = null;
+        document.getElementById('app').classList.add('hidden');
+        document.getElementById('user-tools').classList.add('hidden');
+        document.getElementById('welcome').classList.remove('hidden');
+        if (window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
+      }
+      init();
+    </script>
+  </body>
+</html>
