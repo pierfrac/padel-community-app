@@ -50,15 +50,17 @@ function Connect-GitHub {
 }
 
 function Invoke-GitHubApi([string]$Uri) {
-  return Invoke-RestMethod -Method Get -Uri $Uri -Headers (Get-GitHubHeaders $script:GitHubToken)
+  $response = Invoke-WebRequest -Method Get -Uri $Uri -Headers (Get-GitHubHeaders $script:GitHubToken) -UseBasicParsing
+  return ($response.Content | ConvertFrom-Json)
 }
 
 function Select-GitHubRepository {
   Write-Host "Carico i repository accessibili..."
   $all = @(); $page = 1
   do {
-    $batch = @(Invoke-GitHubApi "$GitHubApi/user/repos?per_page=100&sort=updated&direction=desc&page=$page")
-    $all += $batch; $page++
+    $batch = Invoke-GitHubApi "$GitHubApi/user/repos?per_page=100&sort=updated&direction=desc&page=$page"
+    foreach ($entry in @($batch)) { if ($null -ne $entry.full_name) { $all += $entry } }
+    $page++
   } while ($batch.Count -eq 100)
   if ($all.Count -eq 0) { throw "Nessun repository trovato per l'account GitHub autenticato." }
   $sorted = @($all | Sort-Object full_name)
@@ -79,8 +81,9 @@ function Select-GitHubBranch($Repository) {
   Write-Host "Carico i branch di $($Repository.full_name)..."
   $branches=@(); $page=1
   do {
-    $batch = @(Invoke-GitHubApi "$GitHubApi/repos/$($Repository.owner.login)/$($Repository.name)/branches?per_page=100&page=$page")
-    $branches += $batch; $page++
+    $batch = Invoke-GitHubApi "$GitHubApi/repos/$($Repository.owner.login)/$($Repository.name)/branches?per_page=100&page=$page"
+    foreach ($entry in @($batch)) { if ($null -ne $entry.name) { $branches += $entry } }
+    $page++
   } while ($batch.Count -eq 100)
   if ($branches.Count -eq 0) { throw "Nessun branch disponibile nel repository selezionato." }
   $branches = @($branches | Sort-Object name)
