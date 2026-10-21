@@ -26,9 +26,15 @@ function setupPadelCommunity() {
       sh.getRange(1,1,1,HEADERS[name].length).setValues([HEADERS[name]]);
       sh.setFrozenRows(1);
     } else {
-      const first = sh.getRange(1,1,1,Math.max(sh.getLastColumn(),HEADERS[name].length)).getDisplayValues()[0];
-      if (first.slice(0,HEADERS[name].length).join("|") !== HEADERS[name].join("|"))
+      const existingCount = sh.getLastColumn();
+      const first = sh.getRange(1,1,1,existingCount).getDisplayValues()[0];
+      const expectedPrefix = HEADERS[name].slice(0,existingCount);
+      if (existingCount > HEADERS[name].length || first.join("|") !== expectedPrefix.join("|"))
         throw new Error("Intestazioni non compatibili nella scheda "+name+". Non sono state sovrascritte.");
+      if (existingCount < HEADERS[name].length) {
+        sh.getRange(1,existingCount+1,1,HEADERS[name].length-existingCount).setValues([HEADERS[name].slice(existingCount)]);
+      }
+      sh.setFrozenRows(1);
     }
   });
   return "Struttura pronta. Ora configura GOOGLE_CLIENT_ID e ADMIN_EMAILS nelle Proprietà script.";
@@ -143,6 +149,8 @@ function verifyUser_(idToken) {
   if(token.aud!==clientId||token.email_verified!=="true"||!token.email||!token.sub) throw new Error("Credenziali Google non valide per questa app.");
   const exp=Number(token.exp||0); if(exp*1000<Date.now()) throw new Error("Sessione Google scaduta. Accedi di nuovo.");
   const email=String(token.email).toLowerCase();
+  const allowedEmails=(props.getProperty("ALLOWED_EMAILS")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
+  if(allowedEmails.length && allowedEmails.indexOf(email)<0) throw new Error("Questo account non è ancora abilitato alla community. Chiedi all'amministratore di aggiungere la tua Gmail.");
   const adminEmails=(props.getProperty("ADMIN_EMAILS")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
   return {email:email,playerId:"google:"+token.sub,isAdmin:adminEmails.indexOf(email)>=0};
 }
