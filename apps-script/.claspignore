@@ -1,0 +1,13 @@
+# Never upload local portable Node.js/npm dependencies to Apps Script
+.runtime/**
+.runtime/
+
+# Local clasp credentials and local-only configuration
+.clasp.json
+
+# Launcher scripts are local deployment tooling, not Apps Script source
+launcher/**
+.gitignore
+.claspignore
+DEPLOY-CLASP.md
+README.md
