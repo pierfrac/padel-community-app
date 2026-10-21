@@ -6,9 +6,9 @@ const gs = fs.readFileSync(new URL("./Code.gs", import.meta.url), "utf8");
 const html = fs.readFileSync(new URL("./Index.html", import.meta.url), "utf8");
 new vm.Script(gs, { filename: "Code.gs" });
 
-const match = html.match(/<script>([\\s\\S]*?)<\\/script>/);
+const match = html.match(/<script>([\s\S]*?)<\/script>/);
 assert.ok(match, "Index.html must contain its client script");
-const client = match[1].replace(/<\\?!= JSON\\.stringify\\(googleClientId\\) \\?>/g, '"test-client-id"');
+const client = match[1].replace(/<\?!= JSON\.stringify\(googleClientId\) \?>/g, '"test-client-id"');
 new vm.Script(client, { filename: "Index.html inline script" });
 
 for (const required of [
@@ -21,14 +21,15 @@ for (const required of [
   "function cancelMatch(idToken,input)"
 ]) assert.ok(gs.includes(required), "Missing backend function: " + required);
 
-assert.ok(!/function\\s+(getPrivateFeedback|submitPrivateFeedback)\\s*\\(/.test(gs), "Private feedback must not be exposed by the Apps Script backend");
+assert.ok(!/function\s+(getPrivateFeedback|submitPrivateFeedback)\s*\(/.test(gs), "Private feedback must not be exposed by the Apps Script backend");
 assert.ok(html.includes("drive.file"), "Private feedback must use the narrow Drive file scope");
 assert.ok(html.includes("function score(a,b)"), "Match Score must be present in the client");
 assert.ok(gs.includes("token.aud!==clientId"), "Google ID token audience must be validated");
 assert.ok(gs.includes("ALLOWED_EMAILS"), "Optional community allowlist must be supported");
 
-const scoringSource = 'let privateFeedback={};' +
-  html.match(/function rank\\(level\\)\\{[\\s\\S]*?function renderSuggestions\\(/)[0].replace(/function renderSuggestions\\($/, "");
+const scoringMatch = html.match(/function rank\(level\)\{[\s\S]*?function renderSuggestions\(/);
+assert.ok(scoringMatch, "Match Score functions must be extractable for tests");
+const scoringSource = 'let privateFeedback={};' + scoringMatch[0].replace(/function renderSuggestions\($/, "");
 const sandbox = {};
 vm.runInNewContext(scoringSource, sandbox);
 const left = {playerId:"left", skillLevel:"Silver", preferredSide:"left"};
