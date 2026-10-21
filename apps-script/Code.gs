@@ -242,9 +242,10 @@ function apiSubmitFeedback(idToken, matchId, teammateEmail, rating) {
   const match = getMatch_(String(matchId));
   if (!match || match.status !== 'Completed') throw new Error('Il feedback si può inviare dopo la partita.');
   const players = getPlayers_(match.id);
-  if (!players.some(function(p) { return p.userId === user.email; }) ||
-      !players.some(function(p) { return p.userId === String(teammateEmail); })) {
-    throw new Error('Il feedback è disponibile solo per un compagno della tua partita.');
+  const author = players.find(function(p) { return p.userId === user.email; });
+  const teammate = players.find(function(p) { return p.userId === String(teammateEmail); });
+  if (!author || !teammate || !author.team || author.team !== teammate.team) {
+    throw new Error('Il feedback è disponibile solo per il tuo compagno di squadra della partita.');
   }
   const score = Number(rating);
   if (!Number.isInteger(score) || score < 1 || score > 5) throw new Error('Valutazione non valida.');
@@ -304,7 +305,8 @@ function apiMyMatchParticipants(idToken, matchId) {
   if (!players.some(function(player) { return player.userId === user.email; })) {
     throw new Error('Solo i partecipanti possono vedere i giocatori della partita.');
   }
-  return players.filter(function(player) { return player.userId !== user.email; }).map(function(player) {
+  const author = players.find(function(player) { return player.userId === user.email; });
+  return players.filter(function(player) { return player.userId !== user.email && player.team === author.team; }).map(function(player) {
     const profile = getUser_(player.userId);
     return {
       userId: player.userId,
@@ -456,11 +458,7 @@ function assignBalancedTeams_(matchId) {
     const score = pairScore(pairing[0]) + pairScore(pairing[1]) - Math.abs(sumA - sumB) * 5;
     if (score > bestScore) { bestScore = score; best = pairing; }
   });
-  const rows = sheetObjects_(SHEET_NAMES.players).filter(function(player) { return player.matchId === matchId; });
   best[0].forEach(function(index) {
-    const row = findRow_(sheet, 'userId', profiles[index].userId);
-    // User IDs are not globally unique across matches in this sheet, so locate
-    // the exact row using both match ID and user ID.
     const actualRow = findPlayerRow_(sheet, matchId, profiles[index].userId);
     if (actualRow) sheet.getRange(actualRow, 4).setValue('A');
   });
@@ -518,6 +516,8 @@ function listMatches_(currentUserEmail) {
     return {
       id: match.matchId,
       isCreator: match.createdBy === currentUserEmail,
+      isParticipant: players.some(function(player) { return player.userId === currentUserEmail; }),
+      hasResult: sheetObjects_(SHEET_NAMES.results).some(function(result) { return result.matchId === match.matchId; }),
       format: match.format,
       category: match.category,
       startsAt: match.startsAt,
