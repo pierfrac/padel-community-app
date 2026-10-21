@@ -103,15 +103,22 @@ function createMatch(idToken,input) {
 function registerForMatch(idToken,input) {
   const user=verifyUser_(idToken); input=input||{};
   const matchId=clean_(input.matchId,80);
-  const match=readRows_("Matches").find(r=>String(r.matchId)===matchId&&String(r.status)!=="cancelled");
-  if(!match) throw new Error("Partita non trovata.");
-  if(new Date(match.dateTime).getTime()<Date.now()) throw new Error("Non puoi iscriverti a una partita già iniziata.");
-  const regs=readRows_("Registrations");
-  if(regs.some(r=>String(r.matchId)===matchId&&String(r.playerId)===user.playerId&&String(r.status)==="joined")) throw new Error("Sei già iscritto a questa partita.");
-  const active=regs.filter(r=>String(r.matchId)===matchId&&String(r.status)==="joined");
-  if(active.length>=4) throw new Error("La partita è già completa.");
-  sheet_("Registrations").appendRow([Utilities.getUuid(),matchId,user.playerId,"joined",new Date()]);
-  return {message:"Iscrizione registrata."};
+  const lock=LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const match=readRows_("Matches").find(r=>String(r.matchId)===matchId&&String(r.status)!=="cancelled");
+    if(!match) throw new Error("Partita non trovata.");
+    if(String(match.status)==="completed") throw new Error("La partita è già conclusa.");
+    if(new Date(match.dateTime).getTime()<Date.now()) throw new Error("Non puoi iscriverti a una partita già iniziata.");
+    const regs=readRows_("Registrations");
+    if(regs.some(r=>String(r.matchId)===matchId&&String(r.playerId)===user.playerId&&String(r.status)==="joined")) throw new Error("Sei già iscritto a questa partita.");
+    const active=regs.filter(r=>String(r.matchId)===matchId&&String(r.status)==="joined");
+    if(active.length>=4) throw new Error("La partita è già completa.");
+    sheet_("Registrations").appendRow([Utilities.getUuid(),matchId,user.playerId,"joined",new Date()]);
+    return {message:"Iscrizione registrata."};
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function cancelRegistration(idToken,input) {
