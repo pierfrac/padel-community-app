@@ -123,6 +123,19 @@ function cancelRegistration(idToken,input) {
   return {message:"Iscrizione annullata."};
 }
 
+function completeMatch(idToken,input) {
+  const user=verifyUser_(idToken); const matchId=clean_(input&&input.matchId,80);
+  const sh=sheet_("Matches"), matches=readRows_("Matches");
+  const row=matches.find(r=>String(r.matchId)===matchId);
+  if(!row) throw new Error("Partita non trovata.");
+  if(!user.isAdmin&&String(row.createdBy)!==user.playerId) throw new Error("Solo chi ha proposto la partita o un amministratore può segnarla come conclusa.");
+  if(String(row.status)==="cancelled") throw new Error("Una partita annullata non può essere conclusa.");
+  const start=new Date(row.dateTime);
+  if(isNaN(start.getTime())||Date.now()<start.getTime()+90*60000) throw new Error("La partita può essere segnata conclusa dopo l'orario previsto di fine (90 minuti).");
+  sh.getRange(row._row,5).setValue("completed");
+  return {message:"Partita segnata come conclusa. Ora i partecipanti possono lasciare il feedback privato."};
+}
+
 function cancelMatch(idToken,input) {
   const user=verifyUser_(idToken); const matchId=clean_(input&&input.matchId,80);
   const sh=sheet_("Matches"), matches=readRows_("Matches");
