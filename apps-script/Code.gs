@@ -219,7 +219,7 @@ function apiAssignCourtAndConfirm(idToken, matchId, courtId) {
   if (!calendarId) throw new Error('CALENDAR_ID non configurato.');
   const calendar = CalendarApp.getCalendarById(calendarId);
   if (!calendar) throw new Error('Calendario non accessibile.');
-  const guests = players.map(function(p) { return p.email; }).join(',');
+  const guests = players.map(function(p) { return p.userId; }).join(',');
   const event = calendar.createEvent(
     'Padel · ' + match.format + ' · ' + court.name,
     start,
@@ -262,6 +262,7 @@ function apiSubmitResult(idToken, matchId, teamAScore, teamBScore) {
   if (!match || !getPlayers_(match.id).some(function(p) { return p.userId === user.email; })) {
     throw new Error('Solo i partecipanti possono registrare il risultato.');
   }
+  if (match.status !== 'Completed') throw new Error('Il risultato si può registrare dopo che la partita è completata.');
   const a = Number(teamAScore);
   const b = Number(teamBScore);
   if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0 || a === b) {
@@ -278,6 +279,35 @@ function apiCompleteMatch(idToken, matchId) {
   if (!row) throw new Error('Partita non trovata.');
   sheet_(SHEET_NAMES.matches).getRange(row, 7).setValue('Completed');
   return apiBootstrap(idToken);
+}
+
+function apiListCourts(idToken) {
+  const user = authenticate_(idToken);
+  if (!isAdmin_(user.email)) throw new Error('Operazione riservata agli amministratori.');
+  return sheetObjects_(SHEET_NAMES.courts).filter(function(court) {
+    return court.active !== false && court.courtId;
+  }).map(function(court) {
+    return { courtId: court.courtId, name: court.name, address: court.address };
+  });
+}
+
+function apiMyMatchParticipants(idToken, matchId) {
+  const user = authenticate_(idToken);
+  const match = getMatch_(String(matchId));
+  if (!match) throw new Error('Partita non trovata.');
+  const players = getPlayers_(match.id);
+  if (!players.some(function(player) { return player.userId === user.email; })) {
+    throw new Error('Solo i partecipanti possono vedere i giocatori della partita.');
+  }
+  return players.filter(function(player) { return player.userId !== user.email; }).map(function(player) {
+    const profile = getUser_(player.userId);
+    return {
+      userId: player.userId,
+      name: profile ? profile.name : player.userId,
+      category: profile ? profile.category : '',
+      position: profile ? profile.position : '',
+    };
+  });
 }
 
 function apiAdminAddCourt(idToken, input) {
@@ -371,12 +401,14 @@ function matchScore_(match, currentPlayers, candidate) {
   const difference = Math.abs(CATEGORIES.indexOf(candidate.category) - CATEGORIES.indexOf(match.category));
   const level = difference === 0 ? 25 : difference === 1 ? 18 : difference === 2 ? 10 : difference === 3 ? 4 : 0;
   const feedback = feedbackAffinity_(currentPlayers, candidate.userId);
+  const results = resultHistoryScore_(currentPlayers, candidate.userId);
   return {
-    total: position + level + feedback,
+    total: position + level + feedback + results,
     position: position,
     level: level,
     feedback: feedback,
-    explanation: positionReason + '; compatibilità livello ' + level + '/25; feedback privato ' + feedback + '/10',
+    results: results,
+    explanation: positionReason + '; compatibilità livello ' + level + '/25; feedback privato ' + feedback + '/10; storico risultati ' + results + '/10',
   };
 }
 
@@ -388,6 +420,21 @@ function feedbackAffinity_(currentPlayers, candidateId) {
   if (!feedback.length) return 0;
   const average = feedback.reduce(function(sum, item) { return sum + Number(item.rating); }, 0) / feedback.length;
   return Math.round((average - 3) * 5);
+}
+
+function resultHistoryScore_(currentPlayers, candidateId) {
+  // Results remain separate from private partner feedback. Until teams are
+  // explicitly assigned, use only the candidate's recorded competitive history
+  // as a small, capped balancing signal; never expose individual results here.
+  const rows = sheetObjects_(SHEET_NAMES.results).filter(function(result) {
+    return result.submittedBy === candidateId;
+  });
+  if (!rows.length) return 0;
+  const margins = rows.map(function(result) {
+    return Number(result.teamAScore) - Number(result.teamBScore);
+  });
+  const averageMargin = margins.reduce(function(sum, value) { return sum + value; }, 0) / margins.length;
+  return Math.max(-5, Math.min(5, Math.round(-averageMargin)));
 }
 
 function listMatches_() {
