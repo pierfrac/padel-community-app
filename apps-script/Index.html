@@ -1,128 +1,89 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="it">
 <head>
-  <base target="_top">
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    :root { color-scheme: light; --ink:#17211b; --muted:#637067; --paper:#f5f7f2; --card:#fff; --accent:#176b4d; --line:#e1e8e1; }
-    * { box-sizing:border-box; }
-    body { margin:0; font-family:Arial,Helvetica,sans-serif; background:var(--paper); color:var(--ink); }
-    main { max-width:760px; margin:0 auto; padding:28px 18px 48px; }
-    .hero { padding:28px; border-radius:22px; background:#e4f1e8; }
-    .eyebrow { text-transform:uppercase; letter-spacing:.12em; font-size:12px; font-weight:700; color:var(--accent); }
-    h1 { margin:10px 0; font-size:clamp(32px,7vw,48px); line-height:1.04; }
-    p { line-height:1.55; }
-    .muted { color:var(--muted); }
-    .panel { margin-top:18px; padding:22px; border:1px solid var(--line); border-radius:18px; background:var(--card); }
-    h2 { margin:0 0 14px; font-size:21px; }
-    label { display:block; margin:12px 0 6px; font-weight:700; font-size:14px; }
-    input, textarea { width:100%; border:1px solid #cbd6cd; border-radius:10px; padding:12px; font:inherit; background:#fff; }
-    button { margin-top:14px; border:0; border-radius:999px; padding:12px 18px; background:var(--accent); color:#fff; font-weight:700; font-size:15px; cursor:pointer; }
-    button:disabled { opacity:.55; cursor:wait; }
-    .match { padding:14px 0; border-bottom:1px solid var(--line); }
-    .match:last-child { border-bottom:0; }
-    .message { min-height:24px; margin-top:10px; font-size:14px; }
-    .privacy { border-left:3px solid var(--accent); padding-left:13px; }
-  </style>
-</head>
-<body>
-  <main>
-    <section class="hero">
-      <div class="eyebrow">La community del campo</div>
-      <h1>Giochiamo meglio insieme.</h1>
-      <p>Trova partite, incontra nuovi compagni e costruisci abbinamenti più equilibrati. Il Match Score aiuterà a suggerire combinazioni considerando livello e posizione preferita.</p>
-      <p class="privacy"><strong>Il feedback è pensato per restare riservato agli altri giocatori.</strong> Prima di attivarlo, configureremo e verificheremo i permessi: non basta nascondere una colonna per proteggere i dati.</p>
-    </section>
-
-    <section class="panel">
-      <h2>Partite aperte</h2>
-      <div id="matches" class="muted">Caricamento partite…</div>
-      <div id="loadMessage" class="message" role="status"></div>
-    </section>
-
-    <section class="panel">
-      <h2>Proponi una partita</h2>
-      <p class="muted">Questa è una prima versione tecnica. Prima di condividerla con tutta la community aggiungeremo identificazione del giocatore, iscrizioni e controlli di accesso.</p>
-      <form id="matchForm">
-        <label for="venue">Campo / circolo</label>
-        <input id="venue" name="venue" required maxlength="120" placeholder="Es. Padel Club">
-        <label for="dateTime">Data e ora</label>
-        <input id="dateTime" name="dateTime" type="datetime-local" required>
-        <label for="notes">Note (facoltative)</label>
-        <textarea id="notes" name="notes" rows="2" maxlength="500" placeholder="Livello, disponibilità, dettagli…"></textarea>
-        <button id="submitButton" type="submit">Proponi partita</button>
-      </form>
-      <div id="formMessage" class="message" role="status"></div>
-    </section>
-  </main>
-
-  <script>
-    function showMatches(items) {
-      const root = document.getElementById("matches");
-      root.replaceChildren();
-      if (!items || !items.length) {
-        root.textContent = "Non ci sono ancora partite pubblicate.";
-        return;
-      }
-      items.forEach(function (match) {
-        const item = document.createElement("article");
-        item.className = "match";
-        const title = document.createElement("strong");
-        title.textContent = match.venue || "Campo da definire";
-        const detail = document.createElement("p");
-        detail.className = "muted";
-        const date = match.dateTime ? new Date(match.dateTime) : null;
-        detail.textContent = (date && !isNaN(date.getTime()) ? date.toLocaleString("it-IT") : "Data da definire") + " · " + (match.status || "open");
-        item.append(title, detail);
-        if (match.notes) {
-          const note = document.createElement("p");
-          note.textContent = match.notes;
-          item.appendChild(note);
-        }
-        root.appendChild(item);
-      });
-    }
-
-    function loadMatches() {
-      if (!window.google || !google.script || !google.script.run) {
-        document.getElementById("matches").textContent = "Apri questa pagina tramite il deployment di Google Apps Script per caricare le partite.";
-        return;
-      }
-      google.script.run
-        .withSuccessHandler(showMatches)
-        .withFailureHandler(function (error) {
-          document.getElementById("matches").textContent = "Partite non disponibili: " + (error && error.message ? error.message : "errore");
-        })
-        .getMatches();
-    }
-
-    document.getElementById("matchForm").addEventListener("submit", function (event) {
-      event.preventDefault();
-      const button = document.getElementById("submitButton");
-      const message = document.getElementById("formMessage");
-      button.disabled = true;
-      message.textContent = "Salvataggio…";
-      const input = {
-        venue: document.getElementById("venue").value,
-        dateTime: document.getElementById("dateTime").value,
-        notes: document.getElementById("notes").value
-      };
-      google.script.run
-        .withSuccessHandler(function (result) {
-          message.textContent = result.message || "Partita salvata.";
-          document.getElementById("matchForm").reset();
-          button.disabled = false;
-          loadMatches();
-        })
-        .withFailureHandler(function (error) {
-          message.textContent = error && error.message ? error.message : "Errore durante il salvataggio.";
-          button.disabled = false;
-        })
-        .createMatch(input);
-    });
-
-    loadMatches();
-  </script>
-</body>
-</html>
+<meta charset="utf-8"><base target="_top"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+:root{--bg:#f3f6f1;--ink:#1d2922;--muted:#66736a;--green:#176b4d;--mint:#dcefe2;--line:#dfe7df;--white:#fff;--red:#a13d35}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:860px;margin:auto;padding:18px 14px 44px}.hero{background:var(--mint);border-radius:24px;padding:26px 22px}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--green);font-weight:800}
+h1{font-size:clamp(32px,8vw,48px);line-height:1.03;letter-spacing:-.04em;margin:10px 0}h2{font-size:21px;margin:0 0 14px}p{margin:8px 0}.muted{color:var(--muted);font-size:14px}
+.panel{margin-top:15px;padding:20px;background:var(--white);border:1px solid var(--line);border-radius:18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:560px){.grid{grid-template-columns:1fr}}
+label{display:block;font-size:13px;font-weight:750;margin:12px 0 5px}input,select,textarea{width:100%;border:1px solid #cbd6cd;border-radius:10px;padding:12px;background:white;color:var(--ink);font:inherit}
+button{border:0;border-radius:999px;padding:12px 17px;background:var(--green);color:white;font-weight:750;cursor:pointer;margin-top:12px}button.secondary{background:#e6eee7;color:var(--green)}button.danger{background:#f7e8e6;color:var(--red)}button:disabled{opacity:.5;cursor:wait}
+.notice{border-left:3px solid var(--green);padding-left:12px;font-size:14px}.match{border-top:1px solid var(--line);padding:14px 0}.match:first-child{border-top:0}.matchhead{display:flex;justify-content:space-between;gap:12px;align-items:start}.pill{font-size:12px;background:#e7f2e9;color:var(--green);padding:4px 9px;border-radius:999px;white-space:nowrap}.msg{min-height:22px;font-size:14px;margin-top:8px}.rowbuttons{display:flex;gap:8px;flex-wrap:wrap}.score{font-weight:800;color:var(--green)}#app{display:none}.small{font-size:12px}.status{padding:9px 12px;border-radius:10px;background:#eef3ed;margin-top:12px;font-size:13px}
+</style></head>
+<body><main>
+<section class="hero">
+<div class="eyebrow">Padel Community</div><h1>Giochiamo meglio insieme.</h1>
+<p>Trova partite, incontra compagni compatibili e organizza il campo. Il Match Score combina livello, lato preferito e le tue esperienze passate per aiutarti a scegliere con chi giocare.</p>
+<p class="notice"><strong>I tuoi feedback personali restano nel tuo Google Drive privato.</strong> Non vengono salvati nel foglio condiviso e non sono accessibili agli altri giocatori né al gestore del foglio. Servono solo a personalizzare il tuo Match Score. La prima volta che attivi questa funzione, Google ti chiederà il permesso di creare e leggere il file privato dell'app nel tuo Drive.</p>
+<div id="googleButton"></div><div id="authMessage" class="msg" role="status">Accedi con Google per iniziare.</div>
+</section>
+<div id="app">
+<section class="panel"><h2>Il tuo profilo</h2>
+<form id="profileForm"><div class="grid">
+<div><label for="name">Nome visibile</label><input id="name" maxlength="80" required placeholder="Come ti chiami in community?"></div>
+<div><label for="level">Livello</label><select id="level" required><option value="">Seleziona</option><option>Bronze</option><option>Silver</option><option>Silver-Gold</option><option>Gold</option><option>Gold+</option></select></div>
+</div><label for="side">Lato preferito</label><select id="side"><option value="indifferent">Indifferente</option><option value="right">Destra</option><option value="left">Sinistra</option></select>
+<button type="submit">Salva profilo</button></form><div id="profileMsg" class="msg" role="status"></div>
+</section>
+<section class="panel"><h2>Partite aperte</h2><p class="muted">Una partita ha quattro posti. Puoi iscriverti o annullare la tua iscrizione. Chi la propone è iscritto automaticamente.</p><div id="matches" class="muted">Caricamento…</div><div id="matchesMsg" class="msg" role="status"></div></section>
+<section class="panel"><h2>Proponi una partita</h2><form id="matchForm"><div class="grid">
+<div><label for="venue">Campo / circolo</label><input id="venue" maxlength="120" required placeholder="Nome del circolo"></div>
+<div><label for="dateTime">Data e ora</label><input id="dateTime" type="datetime-local" required></div>
+</div><label for="notes">Note facoltative</label><textarea id="notes" rows="2" maxlength="500" placeholder="Dettagli per i partecipanti"></textarea>
+<button type="submit">Proponi partita</button></form><div id="matchMsg" class="msg" role="status"></div></section>
+<section class="panel"><h2>Feedback riservato</h2><p class="muted">Dopo aver giocato, valuta in privato l'esperienza con un compagno. La nota rimane nel tuo Drive e non viene mostrata a nessuno. Non confondere la qualità del compagno con il risultato della partita.</p>
+<form id="feedbackForm"><label for="feedbackMatch">Partita</label><select id="feedbackMatch" required><option value="">Seleziona partita</option></select>
+<div class="grid"><div><label for="feedbackAbout">Compagno</label><select id="feedbackAbout" required><option value="">Seleziona giocatore</option></select></div><div><label for="again">Giocheresti ancora insieme?</label><select id="again" required><option value="">Seleziona</option><option value="yes">Sì, volentieri</option><option value="maybe">Dipende</option><option value="no">Preferirei di no</option></select></div></div>
+<label for="experience">Nota personale (facoltativa)</label><textarea id="experience" maxlength="500" rows="2" placeholder="Un promemoria per te, non una recensione pubblica"></textarea>
+<button type="submit">Salva nel mio Drive</button></form><div id="feedbackMsg" class="msg" role="status"></div>
+</section>
+<section class="panel"><h2>Match Score personale</h2><p class="muted">Suggerimenti orientativi per te: la complementarità destra/sinistra pesa molto, poi conta la vicinanza di livello e la tua esperienza privata con quella persona.</p><div id="suggestions" class="muted">Completa il profilo per vedere i suggerimenti.</div></section>
+<div class="rowbuttons"><button class="secondary" id="refresh">Aggiorna dati</button><button class="secondary" id="privateDrive">Attiva / aggiorna Drive privato</button><button class="danger" id="signOut">Esci</button></div>
+<div id="driveStatus" class="status">I feedback non vengono trasferiti al foglio condiviso.</div>
+</div>
+<footer class="muted small" style="padding:18px 4px">MVP in prova. Per usare la community servono il deployment Apps Script e la configurazione OAuth del proprietario. Le iscrizioni sono limitate a quattro persone per partita.</footer>
+</main>
+<script>
+const GOOGLE_CLIENT_ID = <?= JSON.stringify(googleClientId) ?>;
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+let idToken="",user=null,data={players:[],matches:[],registrations:[]},driveToken="",driveFileId="",privateFeedback={};
+const $=id=>document.getElementById(id);
+function server(method,arg,ok,bad){if(!idToken){bad({message:"Accedi con Google prima di continuare."});return}const r=google.script.run.withSuccessHandler(ok).withFailureHandler(bad);r[method](idToken,arg);}
+function setMessage(id,text){$(id).textContent=text||"";}
+function initGoogle(){if(!GOOGLE_CLIENT_ID){setMessage("authMessage","Configurazione incompleta: il proprietario deve impostare GOOGLE_CLIENT_ID nelle Proprietà script.");return;}
+ const start=()=>{if(!window.google||!google.accounts||!google.accounts.id){setTimeout(start,200);return;}
+ google.accounts.id.initialize({client_id:GOOGLE_CLIENT_ID,callback:async response=>{idToken=response.credential;try{const p=JSON.parse(atob(idToken.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));user={email:p.email,sub:p.sub};setMessage("authMessage","Accesso effettuato: "+user.email);$("app").style.display="block";await refreshData();}catch(e){setMessage("authMessage","Impossibile leggere il profilo Google.");}}});
+ google.accounts.id.renderButton($("googleButton"),{theme:"outline",size:"large",shape:"pill",text:"signin_with",locale:"it"});
+ };start();}
+function refreshData(){server("getAppData",null,d=>{data=d;user=d.user;const me=d.me;if(me){$("name").value=me.displayName||"";$("level").value=me.skillLevel||"";$("side").value=me.preferredSide||"indifferent";}render();},e=>setMessage("matchesMsg",e.message||"Errore di caricamento"));}
+function render(){const root=$("matches");root.replaceChildren();
+ if(!data.matches.length)root.textContent="Non ci sono ancora partite aperte. Proponine una qui sotto.";
+ data.matches.forEach(m=>{const item=document.createElement("article");item.className="match";const head=document.createElement("div");head.className="matchhead";const title=document.createElement("strong");title.textContent=m.venue;const pill=document.createElement("span");pill.className="pill";pill.textContent=m.registeredCount+"/4 iscritti";head.append(title,pill);const detail=document.createElement("p");detail.className="muted";const d=new Date(m.dateTime);detail.textContent=(isNaN(d.getTime())?"Data da definire":d.toLocaleString("it-IT"))+(m.notes?" · "+m.notes:"");
+ const btns=document.createElement("div");btns.className="rowbuttons";const own=data.registrations.some(r=>r.matchId===m.matchId&&r.playerId===user.playerId);const join=document.createElement("button");join.className="secondary";join.textContent=own?"Annulla iscrizione":"Mi iscrivo";join.disabled=m.registeredCount>=4&&!own;join.onclick=()=>server(own?"cancelRegistration":"registerForMatch",{matchId:m.matchId},r=>{setMessage("matchesMsg",r.message);refreshData();},e=>setMessage("matchesMsg",e.message||"Errore"));btns.append(join);
+ if(m.createdBy===user.playerId||user.isAdmin){const cancel=document.createElement("button");cancel.className="danger";cancel.textContent="Annulla partita";cancel.onclick=()=>{if(confirm("Annullare questa partita?"))server("cancelMatch",{matchId:m.matchId},r=>{setMessage("matchesMsg",r.message);refreshData();},e=>setMessage("matchesMsg",e.message||"Errore"));};btns.append(cancel);}
+ item.append(head,detail,btns);root.append(item);});
+ fill($("feedbackMatch"),data.matches.filter(m=>data.registrations.some(r=>r.matchId===m.matchId&&r.playerId===user.playerId)).map(m=>({value:m.matchId,label:m.venue+" · "+new Date(m.dateTime).toLocaleString("it-IT")})),"Seleziona partita");renderSuggestions();}
+function fill(el,items,placeholder){const old=el.value;el.replaceChildren();const first=document.createElement("option");first.value="";first.textContent=placeholder;el.append(first);items.forEach(x=>{const o=document.createElement("option");o.value=x.value;o.textContent=x.label;el.append(o)});if(items.some(x=>x.value===old))el.value=old;}
+$("profileForm").onsubmit=e=>{e.preventDefault();server("saveProfile",{displayName:$("name").value,skillLevel:$("level").value,preferredSide:$("side").value},r=>{setMessage("profileMsg",r.message);refreshData();},err=>setMessage("profileMsg",err.message||"Errore"));};
+$("matchForm").onsubmit=e=>{e.preventDefault();server("createMatch",{venue:$("venue").value,dateTime:$("dateTime").value,notes:$("notes").value},r=>{setMessage("matchMsg",r.message);$("matchForm").reset();refreshData();},err=>setMessage("matchMsg",err.message||"Errore"));};
+$("feedbackMatch").onchange=()=>{const mid=$("feedbackMatch").value;const ids=data.registrations.filter(r=>r.matchId===mid&&r.playerId!==user.playerId).map(r=>r.playerId);fill($("feedbackAbout"),data.players.filter(p=>ids.includes(p.playerId)).map(p=>({value:p.playerId,label:p.displayName+" ("+p.skillLevel+")"})),"Seleziona compagno");};
+function requestDriveToken(done){if(!window.google||!google.accounts||!google.accounts.oauth2){setMessage("driveStatus","Servizio Google OAuth non caricato. Ricarica la pagina.");return;}
+ const client=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CLIENT_ID,scope:DRIVE_SCOPE,callback:async response=>{if(response.error){setMessage("driveStatus","Autorizzazione Drive non completata: "+response.error);return;}driveToken=response.access_token;try{await loadPrivateFeedback();setMessage("driveStatus","Drive privato collegato. I feedback restano nel tuo account Google.");if(done)done();}catch(err){setMessage("driveStatus","Errore Drive: "+err.message);}}});client.requestAccessToken({prompt:""});}
+async function driveFetch(url,options={}){const res=await fetch(url,{...options,headers:{...(options.headers||{}),Authorization:"Bearer "+driveToken}});if(!res.ok)throw new Error("Google Drive ("+res.status+"): "+(await res.text()).slice(0,180));return res;}
+async function loadPrivateFeedback(){const q=encodeURIComponent("name='PadelCommunityPrivateFeedback.json' and trashed=false");const list=await driveFetch("https://www.googleapis.com/drive/v3/files?q="+q+"&spaces=drive&fields=files(id,name,mimeType)&pageSize=100");const json=await list.json();const found=(json.files||[]).find(f=>f.mimeType==="application/json");if(!found){driveFileId="";privateFeedback={};return;}driveFileId=found.id;const res=await driveFetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(driveFileId)+"?alt=media");privateFeedback=await res.json();if(!privateFeedback||typeof privateFeedback!=="object")privateFeedback={};}
+async function savePrivateFeedback(){const body=JSON.stringify(privateFeedback);if(driveFileId){await driveFetch("https://www.googleapis.com/upload/drive/v3/files/"+encodeURIComponent(driveFileId)+"?uploadType=media",{method:"PATCH",headers:{"Content-Type":"application/json"},body});}
+ else{const boundary="padel_"+Math.random().toString(16).slice(2);const metadata={name:"PadelCommunityPrivateFeedback.json",mimeType:"application/json",description:"Private Padel Community feedback. Created by the user-owned app."};const multipart="--"+boundary+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"+JSON.stringify(metadata)+"\r\n--"+boundary+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"+body+"\r\n--"+boundary+"--";const res=await driveFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name",{method:"POST",headers:{"Content-Type":"multipart/related; boundary="+boundary},body:multipart});const result=await res.json();driveFileId=result.id;}}
+$("feedbackForm").onsubmit=async e=>{e.preventDefault();if(!driveToken){requestDriveToken(()=>submitFeedback());return;}submitFeedback();};
+async function submitFeedback(){const matchId=$("feedbackMatch").value,about=$("feedbackAbout").value;if(!matchId||!about){setMessage("feedbackMsg","Scegli partita e compagno.");return;}const key=about;const old=privateFeedback[key]||{history:[]};old.history=old.history||[];old.history.push({matchId:matchId,wouldPlayAgain:$("again").value,experience:$("experience").value.trim(),createdAt:new Date().toISOString()});old.lastRating=$("again").value;old.updatedAt=new Date().toISOString();privateFeedback[key]=old;try{await savePrivateFeedback();setMessage("feedbackMsg","Salvato nel tuo Google Drive privato. Nessun feedback è stato inviato al foglio condiviso.");$("feedbackForm").reset();renderSuggestions();}catch(err){setMessage("feedbackMsg","Non è stato possibile salvare il feedback: "+err.message);}}
+$("privateDrive").onclick=()=>requestDriveToken(()=>renderSuggestions());
+function rank(level){return {"Bronze":1,"Silver":2,"Silver-Gold":3,"Gold":4,"Gold+":5}[level]||0;}
+function score(a,b){let s=50;const x=a.preferredSide||"indifferent",y=b.preferredSide||"indifferent";if((x==="left"&&y==="right")||(x==="right"&&y==="left"))s+=25;else if(x==="indifferent"||y==="indifferent")s+=12;else if(x===y)s-=15;s+=Math.max(-20,20-Math.abs(rank(a.skillLevel)-rank(b.skillLevel))*10);const f=privateFeedback[b.playerId];if(f){if(f.lastRating==="yes")s+=20;else if(f.lastRating==="maybe")s+=5;else if(f.lastRating==="no")s-=30;}return Math.max(0,Math.min(100,Math.round(s)));}
+function renderSuggestions(){const root=$("suggestions");root.replaceChildren();if(!data.me){root.textContent="Salva il tuo profilo per vedere suggerimenti.";return;}const others=data.players.filter(p=>p.playerId!==user.playerId).map(p=>({p:p,s:score(data.me,p)})).sort((a,b)=>b.s-a.s);if(!others.length){root.textContent="Quando ci saranno altri profili, vedrai qui i suggerimenti personalizzati.";return;}others.slice(0,8).forEach(({p,s})=>{const row=document.createElement("div");row.className="match";const strong=document.createElement("strong");strong.textContent=p.displayName;const detail=document.createElement("p");detail.className="muted";const side={right:"destra",left:"sinistra",indifferent:"indifferente"}[p.preferredSide]||"indifferente";detail.textContent=p.skillLevel+" · lato "+side;const scoreEl=document.createElement("div");scoreEl.className="score";scoreEl.textContent="Match Score: "+s+"/100";row.append(strong,detail,scoreEl);root.append(row);});}
+$("refresh").onclick=()=>refreshData();$("signOut").onclick=()=>{idToken="";driveToken="";user=null;$("app").style.display="none";$("googleButton").replaceChildren();setMessage("authMessage","Disconnesso. Ricarica la pagina per accedere di nuovo.");};
+initGoogle();
+</script></body></html>
