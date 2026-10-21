@@ -10,6 +10,7 @@ $NodeExe = Join-Path $NodeHome "node.exe"
 $NpmCmd = Join-Path $NodeHome "npm.cmd"
 $ClaspConfig = Join-Path $AppDir ".clasp.json"
 $GitHubApi = "https://api.github.com"
+$GitHubTokenFile = Join-Path $RuntimeDir "github-token.dpapi"
 $script:GitHubToken = ""
 
 function Pause-Exit { Write-Host ""; Read-Host "Premi INVIO per chiudere" }
@@ -20,27 +21,65 @@ function Get-GitHubHeaders([string]$Token) {
   return $headers
 }
 
-function ConvertFrom-SecureToken {
-  $secure = Read-Host "Token GitHub (PAT, non viene salvato)" -AsSecureString
-  $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+function Convert-SecureStringToPlainText($SecureValue) {
+  $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureValue)
   try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
   finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
 }
 
+function Save-GitHubToken([string]$Token) {
+  # ConvertFrom-SecureString uses Windows DPAPI by default: only this Windows
+  # user on this computer can decrypt the file. Never commit it to Git.
+  $secure = ConvertTo-SecureString $Token -AsPlainText -Force
+  $encrypted = ConvertFrom-SecureString $secure
+  Set-Content -LiteralPath $GitHubTokenFile -Value $encrypted -Encoding ASCII
+  Write-Host "Token salvato cifrato per il tuo utente Windows in apps-script\.runtime\github-token.dpapi."
+}
+
+function Read-GitHubToken {
+  if (-not (Test-Path -LiteralPath $GitHubTokenFile)) { return "" }
+  try {
+    $encrypted = (Get-Content -LiteralPath $GitHubTokenFile -Raw).Trim()
+    if (-not $encrypted) { return "" }
+    $secure = ConvertTo-SecureString $encrypted
+    return Convert-SecureStringToPlainText $secure
+  } catch {
+    Write-Host "Il token cifrato presente non è leggibile da questo utente Windows. Verrà richiesto di nuovo."
+    return ""
+  }
+}
+
 function Connect-GitHub {
   Write-Host "Verifico l'accesso GitHub..."
-  try {
-    $null = Invoke-RestMethod -Method Get -Uri "$GitHubApi/user/repos?per_page=1" -Headers (Get-GitHubHeaders "")
-    Write-Host "Connessione GitHub disponibile."
-    return
-  } catch {
-    Write-Host "Accesso GitHub non autenticato: per elencare i repository serve un token."
+  $token = Read-GitHubToken
+  if (-not [string]::IsNullOrWhiteSpace($token)) {
+    try {
+      $user = Invoke-RestMethod -Method Get -Uri "$GitHubApi/user" -Headers (Get-GitHubHeaders $token)
+      $null = Invoke-RestMethod -Method Get -Uri "$GitHubApi/user/repos?per_page=1" -Headers (Get-GitHubHeaders $token)
+      $script:GitHubToken = $token
+      Write-Host "Connesso a GitHub come $($user.login) usando il token cifrato salvato."
+      return
+    } catch {
+      Write-Host "Il token salvato non è valido o non ha più i permessi richiesti. Ne chiedo uno nuovo."
+      Remove-Item -LiteralPath $GitHubTokenFile -Force -ErrorAction SilentlyContinue
+    }
+  } else {
+    Write-Host "Nessun token salvato leggibile. Verifico se GitHub consente l'accesso senza token..."
+    try {
+      $null = Invoke-RestMethod -Method Get -Uri "$GitHubApi/user/repos?per_page=1" -Headers (Get-GitHubHeaders "")
+      Write-Host "Accesso GitHub senza token disponibile."
+      return
+    } catch {
+      Write-Host "Per elencare i repository serve un token GitHub."
+    }
   }
-  $token = ConvertFrom-SecureToken
+
+  $token = Convert-SecureStringToPlainText (Read-Host "Token GitHub (verrà cifrato localmente)" -AsSecureString)
   if ([string]::IsNullOrWhiteSpace($token)) { throw "Token GitHub vuoto. Operazione annullata." }
   try {
     $user = Invoke-RestMethod -Method Get -Uri "$GitHubApi/user" -Headers (Get-GitHubHeaders $token)
     $null = Invoke-RestMethod -Method Get -Uri "$GitHubApi/user/repos?per_page=1" -Headers (Get-GitHubHeaders $token)
+    Save-GitHubToken $token
     $script:GitHubToken = $token
     Write-Host "Connesso a GitHub come $($user.login)."
   } catch {
