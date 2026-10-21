@@ -232,9 +232,21 @@
             const join = document.createElement('button'); join.textContent = 'Mi candido';
             join.onclick = () => joinMatch(match.id); actions.appendChild(join);
           }
-          const recommend = document.createElement('button'); recommend.className = 'secondary';
-          recommend.textContent = 'Match Score'; recommend.onclick = () => showRecommendations(match.id);
-          actions.appendChild(recommend);
+          if (match.isCreator) {
+            const recommend = document.createElement('button'); recommend.className = 'secondary';
+            recommend.textContent = 'Match Score'; recommend.onclick = () => showRecommendations(match.id);
+            actions.appendChild(recommend);
+          }
+          if (match.status === 'Completed' && match.isParticipant) {
+            const feedback = document.createElement('button'); feedback.className = 'secondary';
+            feedback.textContent = 'Feedback privato'; feedback.onclick = () => submitFeedback(match.id);
+            actions.appendChild(feedback);
+            if (!match.hasResult) {
+              const result = document.createElement('button'); result.className = 'secondary';
+              result.textContent = 'Registra risultato'; result.onclick = () => submitResult(match.id);
+              actions.appendChild(result);
+            }
+          }
           if (state.data && state.data.isAdmin && match.status === 'Awaiting court') {
             const confirm = document.createElement('button'); confirm.textContent = 'Assegna campo';
             confirm.onclick = () => assignCourt(match.id); actions.appendChild(confirm);
@@ -265,6 +277,31 @@
             const score = document.createElement('div'); score.className = 'score'; score.textContent = 'Match Score ' + s.matchScore + ' · ' + s.explanation;
             row.append(title, score); root.appendChild(row);
           });
+        } catch (error) { fail(error); }
+      }
+      async function submitFeedback(matchId) {
+        try {
+          const teammates = await call('apiMyMatchParticipants', matchId);
+          if (!teammates.length) { setStatus('Non risulta un compagno assegnato a questa partita.', 'error'); return; }
+          const teammate = teammates[0];
+          const ratingText = prompt('Feedback privato per ' + teammate.name + '\n1 = esperienza negativa, 5 = ottima esperienza.\nLa valutazione non sarà mostrata al compagno.');
+          if (ratingText === null) return;
+          const rating = Number(ratingText);
+          if (!Number.isInteger(rating) || rating < 1 || rating > 5) { setStatus('Inserisci un voto da 1 a 5.', 'error'); return; }
+          await call('apiSubmitFeedback', matchId, teammate.userId, rating);
+          setStatus('Feedback privato registrato. Non verrà mostrato al compagno.', 'success');
+        } catch (error) { fail(error); }
+      }
+      async function submitResult(matchId) {
+        const aText = prompt('Risultato Team A (games):');
+        if (aText === null) return;
+        const bText = prompt('Risultato Team B (games):');
+        if (bText === null) return;
+        try {
+          await call('apiSubmitResult', matchId, Number(aText), Number(bText));
+          const data = await call('apiBootstrap');
+          state.data = data; renderMatches(data.matches);
+          setStatus('Risultato registrato separatamente dal feedback sul compagno.', 'success');
         } catch (error) { fail(error); }
       }
       async function renderAdminCourts() {
