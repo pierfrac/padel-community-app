@@ -17,6 +17,24 @@ function Pause-Exit {
   Read-Host "Premi INVIO per chiudere"
 }
 
+function Sync-BranchSources {
+  # Download only Apps Script source/config files from the selected GitHub branch.
+  # No repository ZIP and no Git installation are required.
+  $Owner = "pierfrac"
+  $Repository = "padel-community-app.-README-iniziale-non"
+  $Branch = "feature/google-sheets-calendar-web-mvp"
+  $Files = @("Code.gs", "Index.html", "appsscript.json", ".claspignore")
+
+  Write-Host "Aggiorno i sorgenti dal branch GitHub: $Branch"
+  foreach ($Name in $Files) {
+    $Uri = "https://raw.githubusercontent.com/$Owner/$Repository/$Branch/apps-script/$Name"
+    $Destination = Join-Path $AppDir $Name
+    Invoke-WebRequest -Uri $Uri -OutFile $Destination
+    Write-Host "  Aggiornato: $Name"
+  }
+  Write-Host "Sorgenti sincronizzati. La configurazione locale .clasp.json e .runtime restano intatte."
+}
+
 try {
   Write-Host "Padel Community - deploy helper"
   Write-Host "Node.js portable: $NodeVersion"
@@ -61,10 +79,13 @@ try {
       if ($LASTEXITCODE -ne 0) { throw "Login clasp non riuscito." }
     }
     "2" {
-      Write-Host "ATTENZIONE: clasp push aggiorna i sorgenti del progetto Apps Script."
-      Write-Host "Non pubblica una nuova versione /exec e non configura i permessi Google."
+      Write-Host "Il launcher aggiornera' i sorgenti dal branch GitHub prima del push."
+      Write-Host "I file locali Code.gs, Index.html, appsscript.json e .claspignore verranno aggiornati."
+      Write-Host "La configurazione .clasp.json e il runtime portable non verranno toccati."
+      Write-Host "Il push non pubblica una nuova versione /exec e non configura i permessi Google."
       $Confirm = Read-Host "Per continuare scrivi PUSH"
       if ($Confirm -cne "PUSH") { Write-Host "Operazione annullata."; Pause-Exit; exit 0 }
+      Sync-BranchSources
       & $NpmCmd exec --yes --package=@google/clasp -- clasp push
       if ($LASTEXITCODE -ne 0) { throw "clasp push non riuscito." }
     }
