@@ -12,7 +12,7 @@ Double-click `avvia-padel-deploy.bat`. It downloads a pinned Windows x64 Node.js
 
 ## GitHub authentication
 
-The launcher first tries to list repositories without a token. If authentication is required, it asks for a GitHub Personal Access Token (PAT) using a secure input prompt. The token is used in memory for that run and is not written to the repository or a configuration file. Grant the token access only to the repositories needed for deployment. For fine-grained tokens, grant read access to repository metadata and contents.
+The launcher reuses a saved GitHub Personal Access Token (PAT) when available. The token is encrypted with Windows DPAPI and stored at `apps-script/.runtime/github-token.dpapi`; it can normally be decrypted only by the same Windows user on the same computer. If no saved token exists or it stops working, the launcher asks for a replacement through a secure input prompt and saves it encrypted. The token is not written to the repository or a plain-text configuration file. Grant the token access only to the repositories needed for deployment. For fine-grained tokens, grant read access to repository metadata and contents. Do not copy the encrypted file to another computer expecting it to work, and do not commit it.
 
 ## What gets updated
 
