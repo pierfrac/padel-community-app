@@ -83,7 +83,7 @@ function apiBootstrap(idToken) {
     categories: CATEGORIES,
     positions: POSITIONS,
     formats: FORMATS,
-    matches: listMatches_(),
+    matches: listMatches_(user.email),
     recommendations: [],
   };
 }
@@ -162,6 +162,7 @@ function apiJoinMatch(idToken, matchId) {
     if (players.some(function(p) { return p.userId === user.email; })) throw new Error('Sei già iscritto a questa partita.');
     if (players.length >= 4) throw new Error('La partita è già completa.');
     sheet_(SHEET_NAMES.players).appendRow([match.id, user.email, new Date().toISOString(), '']);
+    if (players.length + 1 === 4) assignBalancedTeams_(match.id);
     const matchRow = findRow_(sheet_(SHEET_NAMES.matches), 'matchId', match.id);
     sheet_(SHEET_NAMES.matches).getRange(matchRow, 7).setValue(players.length + 1 >= 4 ? 'Awaiting court' : 'Forming');
   } finally {
@@ -175,8 +176,8 @@ function apiRecommendations(idToken, matchId) {
   const match = getMatch_(String(matchId));
   if (!match) throw new Error('Partita non trovata.');
   const players = getPlayers_(match.id);
-  if (!players.some(function(p) { return p.userId === user.email; }) && !isAdmin_(user.email)) {
-    throw new Error('Non puoi vedere i suggerimenti di questa partita.');
+  if (match.createdBy !== user.email) {
+    throw new Error('Il Match Score personalizzato è visibile solo a chi ha aperto la partita.');
   }
   const existing = players.map(function(p) { return p.userId; });
   return sheetObjects_(SHEET_NAMES.users)
@@ -185,7 +186,7 @@ function apiRecommendations(idToken, matchId) {
         formatAcceptsGender_(match.format, p.gender);
     })
     .map(function(p) {
-      const score = matchScore_(match, players, p);
+      const score = matchScore_(match, players, p, user.email);
       return {
         userId: p.userId,
         name: p.name,
@@ -263,6 +264,10 @@ function apiSubmitResult(idToken, matchId, teamAScore, teamBScore) {
     throw new Error('Solo i partecipanti possono registrare il risultato.');
   }
   if (match.status !== 'Completed') throw new Error('Il risultato si può registrare dopo che la partita è completata.');
+  if (getPlayers_(match.id).length !== 4) throw new Error('La partita deve avere quattro partecipanti.');
+  if (sheetObjects_(SHEET_NAMES.results).some(function(item) { return item.matchId === match.id; })) {
+    throw new Error('Il risultato è già stato registrato.');
+  }
   const a = Number(teamAScore);
   const b = Number(teamBScore);
   if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0 || a === b) {
@@ -379,7 +384,7 @@ function formatAcceptsGender_(format, gender) {
   return gender === 'Male' || gender === 'Female';
 }
 
-function matchScore_(match, currentPlayers, candidate) {
+function matchScore_(match, currentPlayers, candidate, requestingUserId) {
   const positions = currentPlayers.map(function(player) {
     const profile = getUser_(player.userId);
     return profile ? profile.position : '';
@@ -400,7 +405,7 @@ function matchScore_(match, currentPlayers, candidate) {
 
   const difference = Math.abs(CATEGORIES.indexOf(candidate.category) - CATEGORIES.indexOf(match.category));
   const level = difference === 0 ? 25 : difference === 1 ? 18 : difference === 2 ? 10 : difference === 3 ? 4 : 0;
-  const feedback = feedbackAffinity_(currentPlayers, candidate.userId);
+  const feedback = feedbackAffinity_(requestingUserId, candidate.userId);
   const results = resultHistoryScore_(currentPlayers, candidate.userId);
   return {
     total: position + level + feedback + results,
@@ -412,36 +417,107 @@ function matchScore_(match, currentPlayers, candidate) {
   };
 }
 
-function feedbackAffinity_(currentPlayers, candidateId) {
-  const fromIds = currentPlayers.map(function(p) { return p.userId; });
+function feedbackAffinity_(requestingUserId, candidateId) {
   const feedback = sheetObjects_(SHEET_NAMES.feedback).filter(function(f) {
-    return fromIds.indexOf(f.fromUserId) >= 0 && f.toUserId === candidateId;
+    return f.fromUserId === requestingUserId && f.toUserId === candidateId;
   });
   if (!feedback.length) return 0;
   const average = feedback.reduce(function(sum, item) { return sum + Number(item.rating); }, 0) / feedback.length;
   return Math.round((average - 3) * 5);
 }
 
-function resultHistoryScore_(currentPlayers, candidateId) {
-  // Results remain separate from private partner feedback. Until teams are
-  // explicitly assigned, use only the candidate's recorded competitive history
-  // as a small, capped balancing signal; never expose individual results here.
-  const rows = sheetObjects_(SHEET_NAMES.results).filter(function(result) {
-    return result.submittedBy === candidateId;
+function assignBalancedTeams_(matchId) {
+  const sheet = sheet_(SHEET_NAMES.players);
+  const players = getPlayers_(matchId);
+  if (players.length !== 4) return;
+  const profiles = players.map(function(player) {
+    const profile = getUser_(player.userId) || {};
+    return {
+      userId: player.userId,
+      position: profile.position || 'Either',
+      rank: Math.max(0, CATEGORIES.indexOf(profile.category)),
+    };
   });
-  if (!rows.length) return 0;
-  const margins = rows.map(function(result) {
-    return Number(result.teamAScore) - Number(result.teamBScore);
+  const pairings = [
+    [[0, 1], [2, 3]],
+    [[0, 2], [1, 3]],
+    [[0, 3], [1, 2]],
+  ];
+  function pairScore(pair) {
+    const a = profiles[pair[0]], b = profiles[pair[1]];
+    const pos = a.position === 'Either' || b.position === 'Either' ? 12 :
+      a.position !== b.position ? 30 : -5;
+    return pos;
+  }
+  let best = pairings[0], bestScore = -Infinity;
+  pairings.forEach(function(pairing) {
+    const sumA = profiles[pairing[0][0]].rank + profiles[pairing[0][1]].rank;
+    const sumB = profiles[pairing[1][0]].rank + profiles[pairing[1][1]].rank;
+    const score = pairScore(pairing[0]) + pairScore(pairing[1]) - Math.abs(sumA - sumB) * 5;
+    if (score > bestScore) { bestScore = score; best = pairing; }
   });
-  const averageMargin = margins.reduce(function(sum, value) { return sum + value; }, 0) / margins.length;
-  return Math.max(-5, Math.min(5, Math.round(-averageMargin)));
+  const rows = sheetObjects_(SHEET_NAMES.players).filter(function(player) { return player.matchId === matchId; });
+  best[0].forEach(function(index) {
+    const row = findRow_(sheet, 'userId', profiles[index].userId);
+    // User IDs are not globally unique across matches in this sheet, so locate
+    // the exact row using both match ID and user ID.
+    const actualRow = findPlayerRow_(sheet, matchId, profiles[index].userId);
+    if (actualRow) sheet.getRange(actualRow, 4).setValue('A');
+  });
+  best[1].forEach(function(index) {
+    const actualRow = findPlayerRow_(sheet, matchId, profiles[index].userId);
+    if (actualRow) sheet.getRange(actualRow, 4).setValue('B');
+  });
 }
 
-function listMatches_() {
+function findPlayerRow_(sheet, matchId, userId) {
+  const values = sheet.getDataRange().getValues();
+  for (let index = 1; index < values.length; index++) {
+    if (String(values[index][0]) === String(matchId) && String(values[index][1]) === String(userId)) return index + 1;
+  }
+  return 0;
+}
+
+function resultHistoryScore_(currentPlayers, candidateId) {
+  // A small balancing signal based on the candidate's recorded results.
+  // Team assignment is handled when the fourth player joins; raw results are
+  // never returned to other users by the recommendation API.
+  const allPlayers = sheetObjects_(SHEET_NAMES.players).filter(function(p) { return p.userId === candidateId; });
+  const results = sheetObjects_(SHEET_NAMES.results);
+  const strength = [];
+  allPlayers.forEach(function(player) {
+    const result = results.find(function(item) { return item.matchId === player.matchId; });
+    if (!result) return;
+    const teammates = getPlayers_(player.matchId);
+    const current = teammates.find(function(item) { return item.userId === candidateId; });
+    if (!current || !current.team) return;
+    const a = Number(result.teamAScore), b = Number(result.teamBScore);
+    const margin = current.team === 'A' ? a - b : b - a;
+    strength.push(Math.max(-1, Math.min(1, margin / 6)));
+  });
+  if (!strength.length) return 0;
+  const candidateStrength = strength.reduce(function(sum, value) { return sum + value; }, 0) / strength.length;
+  const existingStrength = currentPlayers.map(function(player) {
+    const rows = sheetObjects_(SHEET_NAMES.players).filter(function(p) { return p.userId === player.userId; });
+    const values = [];
+    rows.forEach(function(row) {
+      const result = results.find(function(item) { return item.matchId === row.matchId; });
+      if (!result || !row.team) return;
+      const margin = row.team === 'A' ? Number(result.teamAScore) - Number(result.teamBScore) : Number(result.teamBScore) - Number(result.teamAScore);
+      values.push(Math.max(-1, Math.min(1, margin / 6)));
+    });
+    return values.length ? values.reduce(function(sum, value) { return sum + value; }, 0) / values.length : 0;
+  });
+  const target = existingStrength.length ? existingStrength.reduce(function(sum, value) { return sum + value; }, 0) / existingStrength.length : 0;
+  return Math.max(-5, Math.min(5, Math.round(5 - Math.abs(candidateStrength - target) * 10)));
+}
+
+function listMatches_(currentUserEmail) {
   return sheetObjects_(SHEET_NAMES.matches).map(function(match) {
     const players = getPlayers_(match.matchId);
     return {
       id: match.matchId,
+      isCreator: match.createdBy === currentUserEmail,
       format: match.format,
       category: match.category,
       startsAt: match.startsAt,
