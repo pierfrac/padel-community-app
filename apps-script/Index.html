@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root { color-scheme: light; --ink:#17211b; --muted:#637067; --paper:#f5f7f2; --card:#fff; --accent:#176b4d; --line:#e1e8e1; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Arial,Helvetica,sans-serif; background:var(--paper); color:var(--ink); }
+    main { max-width:760px; margin:0 auto; padding:28px 18px 48px; }
+    .hero { padding:28px; border-radius:22px; background:#e4f1e8; }
+    .eyebrow { text-transform:uppercase; letter-spacing:.12em; font-size:12px; font-weight:700; color:var(--accent); }
+    h1 { margin:10px 0; font-size:clamp(32px,7vw,48px); line-height:1.04; }
+    p { line-height:1.55; }
+    .muted { color:var(--muted); }
+    .panel { margin-top:18px; padding:22px; border:1px solid var(--line); border-radius:18px; background:var(--card); }
+    h2 { margin:0 0 14px; font-size:21px; }
+    label { display:block; margin:12px 0 6px; font-weight:700; font-size:14px; }
+    input, textarea { width:100%; border:1px solid #cbd6cd; border-radius:10px; padding:12px; font:inherit; background:#fff; }
+    button { margin-top:14px; border:0; border-radius:999px; padding:12px 18px; background:var(--accent); color:#fff; font-weight:700; font-size:15px; cursor:pointer; }
+    button:disabled { opacity:.55; cursor:wait; }
+    .match { padding:14px 0; border-bottom:1px solid var(--line); }
+    .match:last-child { border-bottom:0; }
+    .message { min-height:24px; margin-top:10px; font-size:14px; }
+    .privacy { border-left:3px solid var(--accent); padding-left:13px; }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="eyebrow">La community del campo</div>
+      <h1>Giochiamo meglio insieme.</h1>
+      <p>Trova partite, incontra nuovi compagni e costruisci abbinamenti più equilibrati. Il Match Score aiuterà a suggerire combinazioni considerando livello e posizione preferita.</p>
+      <p class="privacy"><strong>Il feedback è pensato per restare riservato agli altri giocatori.</strong> Prima di attivarlo, configureremo e verificheremo i permessi: non basta nascondere una colonna per proteggere i dati.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Partite aperte</h2>
+      <div id="matches" class="muted">Caricamento partite…</div>
+      <div id="loadMessage" class="message" role="status"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Proponi una partita</h2>
+      <p class="muted">Questa è una prima versione tecnica. Prima di condividerla con tutta la community aggiungeremo identificazione del giocatore, iscrizioni e controlli di accesso.</p>
+      <form id="matchForm">
+        <label for="venue">Campo / circolo</label>
+        <input id="venue" name="venue" required maxlength="120" placeholder="Es. Padel Club">
+        <label for="dateTime">Data e ora</label>
+        <input id="dateTime" name="dateTime" type="datetime-local" required>
+        <label for="notes">Note (facoltative)</label>
+        <textarea id="notes" name="notes" rows="2" maxlength="500" placeholder="Livello, disponibilità, dettagli…"></textarea>
+        <button id="submitButton" type="submit">Proponi partita</button>
+      </form>
+      <div id="formMessage" class="message" role="status"></div>
+    </section>
+  </main>
+
+  <script>
+    function showMatches(items) {
+      const root = document.getElementById("matches");
+      root.replaceChildren();
+      if (!items || !items.length) {
+        root.textContent = "Non ci sono ancora partite pubblicate.";
+        return;
+      }
+      items.forEach(function (match) {
+        const item = document.createElement("article");
+        item.className = "match";
+        const title = document.createElement("strong");
+        title.textContent = match.venue || "Campo da definire";
+        const detail = document.createElement("p");
+        detail.className = "muted";
+        const date = match.dateTime ? new Date(match.dateTime) : null;
+        detail.textContent = (date && !isNaN(date.getTime()) ? date.toLocaleString("it-IT") : "Data da definire") + " · " + (match.status || "open");
+        item.append(title, detail);
+        if (match.notes) {
+          const note = document.createElement("p");
+          note.textContent = match.notes;
+          item.appendChild(note);
+        }
+        root.appendChild(item);
+      });
+    }
+
+    function loadMatches() {
+      if (!window.google || !google.script || !google.script.run) {
+        document.getElementById("matches").textContent = "Apri questa pagina tramite il deployment di Google Apps Script per caricare le partite.";
+        return;
+      }
+      google.script.run
+        .withSuccessHandler(showMatches)
+        .withFailureHandler(function (error) {
+          document.getElementById("matches").textContent = "Partite non disponibili: " + (error && error.message ? error.message : "errore");
+        })
+        .getMatches();
+    }
+
+    document.getElementById("matchForm").addEventListener("submit", function (event) {
+      event.preventDefault();
+      const button = document.getElementById("submitButton");
+      const message = document.getElementById("formMessage");
+      button.disabled = true;
+      message.textContent = "Salvataggio…";
+      const input = {
+        venue: document.getElementById("venue").value,
+        dateTime: document.getElementById("dateTime").value,
+        notes: document.getElementById("notes").value
+      };
+      google.script.run
+        .withSuccessHandler(function (result) {
+          message.textContent = result.message || "Partita salvata.";
+          document.getElementById("matchForm").reset();
+          button.disabled = false;
+          loadMatches();
+        })
+        .withFailureHandler(function (error) {
+          message.textContent = error && error.message ? error.message : "Errore durante il salvataggio.";
+          button.disabled = false;
+        })
+        .createMatch(input);
+    });
+
+    loadMatches();
+  </script>
+</body>
+</html>
