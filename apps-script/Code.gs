@@ -16,6 +16,21 @@ function doGet() {
   return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
 }
 
+const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch"];
+
+/** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
+function doPost(e) {
+  let out;
+  try {
+    const req = JSON.parse(e.postData.contents);
+    if (API_METHODS.indexOf(req.method) < 0) throw new Error("Operazione non valida.");
+    out = {ok:true, result:this[req.method](req.idToken, req.arg)};
+  } catch (err) {
+    out = {ok:false, error:String(err && err.message || err)};
+  }
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+}
+
 function setupPadelCommunity() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error("Apri Apps Script dal foglio Google tramite Estensioni > Apps Script.");

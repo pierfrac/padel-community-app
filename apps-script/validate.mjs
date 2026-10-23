@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 
 const gs = fs.readFileSync(new URL("./Code.gs", import.meta.url), "utf8");
 const html = fs.readFileSync(new URL("./Index.html", import.meta.url), "utf8");
+const web = fs.readFileSync(new URL("../web/index.html", import.meta.url), "utf8");
 new vm.Script(gs, { filename: "Code.gs" });
 
 const match = html.match(/<script>([\s\S]*?)<\/script>/);
@@ -29,7 +30,7 @@ assert.ok(gs.includes("ALLOWED_EMAILS"), "Optional community allowlist must be s
 
 const scoringMatch = html.match(/function rank\(level\)\{[\s\S]*?function renderSuggestions\(/);
 assert.ok(scoringMatch, "Match Score functions must be extractable for tests");
-const scoringSource = 'let privateFeedback={};' + scoringMatch[0].replace(/function renderSuggestions\($/, "");
+const scoringSource = 'var privateFeedback={};' + scoringMatch[0].replace(/function renderSuggestions\($/, "");
 const sandbox = {};
 vm.runInNewContext(scoringSource, sandbox);
 const left = {playerId:"left", skillLevel:"Silver", preferredSide:"left"};
@@ -40,5 +41,11 @@ sandbox.privateFeedback.right = {history:[{wouldPlayAgain:"yes"}]};
 assert.equal(sandbox.score(left,right), 100, "Positive private feedback should raise the personalized score");
 sandbox.privateFeedback.right = {history:[{wouldPlayAgain:"no"}]};
 assert.equal(sandbox.score(left,right), 75, "Negative private feedback should lower the personalized score");
+
+const webMatch = web.match(/<script>([\s\S]*?)<\/script>/);
+assert.ok(webMatch, "web/index.html must contain its client script");
+new vm.Script(webMatch[1], { filename: "web/index.html inline script" });
+assert.ok(web.includes("drive.file") && !web.includes("google.script.run"), "Static page must use fetch and the Drive file scope");
+assert.ok(gs.includes("function doPost(e)"), "Backend must expose the JSON API");
 
 console.log("Padel Community static validation passed.");
