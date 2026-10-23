@@ -16,7 +16,7 @@ function doGet() {
   return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
 }
 
-const BACKEND_VERSION = "2026-10-23.1";
+const BACKEND_VERSION = "2026-10-23.2";
 const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
@@ -34,8 +34,9 @@ function doPost(e) {
 }
 
 function setupPadelCommunity() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (!ss) throw new Error("Apri Apps Script dal foglio Google tramite Estensioni > Apps Script.");
+  const sid = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
+  const ss = sid ? SpreadsheetApp.openById(sid) : SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) throw new Error("Apri Apps Script dal foglio Google oppure imposta SPREADSHEET_ID nelle Proprietà script.");
   ["Players","Matches","Registrations"].forEach(function(name) {
     let sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
@@ -200,7 +201,8 @@ function readRows_(name) {
   });
 }
 function sheet_(name) {
-  const ss=SpreadsheetApp.getActiveSpreadsheet(); if(!ss) throw new Error("Collega lo script al foglio dati.");
+  const id=PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
+  const ss=id?SpreadsheetApp.openById(id):SpreadsheetApp.getActiveSpreadsheet(); if(!ss) throw new Error("Collega lo script al foglio dati o imposta SPREADSHEET_ID.");
   const sh=ss.getSheetByName(name); if(!sh) throw new Error("Scheda "+name+" assente. Esegui setupPadelCommunity().");
   return sh;
 }
