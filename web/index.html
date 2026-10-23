@@ -39,7 +39,6 @@ button{border:0;border-radius:999px;padding:12px 17px;background:var(--green);co
 <label class="check"><input type="checkbox" id="showPhoto" checked> Mostra la mia foto Google agli altri giocatori</label>
 <button type="submit">Salva profilo</button></form><div id="profileMsg" class="msg" role="status"></div>
 </section>
-<section class="panel"><h2>Match Score personale</h2><p class="muted">Suggerimenti orientativi per te: la complementarità destra/sinistra pesa molto, poi conta la vicinanza di livello e la tua esperienza privata con quella persona.</p><div id="suggestions" class="muted">Completa il profilo per vedere i suggerimenti.</div></section>
 <div class="rowbuttons"><button class="secondary" id="refresh">Aggiorna dati</button><button class="secondary" id="privateDrive">Attiva / aggiorna Drive privato</button><button class="danger" id="signOut">Esci</button></div>
 <div id="driveStatus" class="status">I feedback non vengono trasferiti al foglio condiviso.</div>
 </div>
@@ -49,6 +48,7 @@ button{border:0;border-radius:999px;padding:12px 17px;background:var(--green);co
 <div><label for="dateTime">Data e ora</label><input id="dateTime" type="datetime-local" required></div>
 </div><label for="notes">Note facoltative</label><textarea id="notes" rows="2" maxlength="500" placeholder="Dettagli per i partecipanti"></textarea>
 <button type="submit">Proponi partita</button></form><div id="matchMsg" class="msg" role="status"></div></section>
+<section class="panel"><h2>Match Score personale</h2><p class="muted">Suggerimenti orientativi per te: la complementarità destra/sinistra pesa molto, poi conta la vicinanza di livello e la tua esperienza privata con quella persona.</p><div id="suggestions" class="muted">Completa il profilo per vedere i suggerimenti.</div></section>
 </div>
 <div id="tab-matches" class="tabpane" hidden>
 <div class="rowbuttons"><button class="secondary" id="refresh2" type="button">Aggiorna partite</button></div>
@@ -108,14 +108,14 @@ function googleCalUrl(m){const c=calParts(m);if(!c)return "";return "https://cal
 function downloadIcs(m){const c=calParts(m);if(!c)return;const esc=t=>String(t).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");const ics=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Padel Community//IT","BEGIN:VEVENT","UID:"+m.matchId+"@padel-community","DTSTAMP:"+c.s,"DTSTART:"+c.s,"DTEND:"+c.e,"SUMMARY:"+esc(c.title),"LOCATION:"+esc(m.venue),"DESCRIPTION:"+esc(c.details),"END:VEVENT","END:VCALENDAR"].join("\r\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([ics],{type:"text/calendar"}));a.download="partita-padel.ics";document.body.append(a);a.click();a.remove();}
 const TOUR_STEPS=[
  {t:"Benvenuto in Padel Community 🎾",b:"Qui trovi partite, ti iscrivi e scegli con chi giocare. Ti mostro in breve come funziona: ci vogliono 30 secondi.",el:null},
- {t:"Tre schede",b:"In basso trovi tre schede: Profilo (chi sei e i giocatori compatibili), Crea partita (proponi una partita) e Partite (le partite aperte, il calendario e il feedback).",el:null},
+ {t:"Tre schede",b:"In basso trovi tre schede: Profilo (chi sei), Crea partita (proponi una partita e vedi i giocatori più compatibili con te) e Partite (le partite aperte, il calendario e il feedback).",el:null},
  {t:"1 · Il tuo profilo",b:"Scrivi come vuoi essere chiamato, il tuo livello e se preferisci giocare a destra o a sinistra. Servono a calcolare con chi giochi meglio. Premi “Salva profilo”.",el:"profileForm"},
  {t:"2 · Partite aperte",b:"Ogni partita ha 4 posti. Premi “Mi iscrivo” o “Annulla iscrizione”. Vedi chi è iscritto e se gioca a destra o a sinistra; se vuoi puoi scegliere un compagno fisso tra gli iscritti. Con “Condividi” inviti i tuoi amici via WhatsApp, email, link o QR code; con “Aggiungi al calendario” la salvi sul tuo calendario.",el:"matches"},
  {t:"3 · Proponi una partita",b:"Indica circolo, data e ora: sei iscritto in automatico. Poi condividi la partita per riempire i posti.",el:"matchForm"},
- {t:"4 · Feedback riservato",b:"Dopo la partita, chi l'ha proposta preme “Segna conclusa”. A quel punto puoi scrivere in privato come ti sei trovato con un compagno. Il feedback resta nel tuo Google Drive: non lo vede nessuno, nemmeno gli organizzatori.",el:"feedbackForm"},
- {t:"5 · Match Score",b:"Qui vedi i giocatori più compatibili con te, in base a livello, lato preferito e ai tuoi feedback privati. È un suggerimento, non un giudizio.",el:"suggestions"},
+ {t:"4 · Match Score",b:"Nella scheda Crea partita vedi i giocatori più compatibili con te, per scegliere con chi giocare, in base a livello, lato preferito e ai tuoi feedback privati. È un suggerimento, non un giudizio.",el:"suggestions"},
+ {t:"5 · Feedback riservato",b:"Dopo la partita, chi l'ha proposta preme “Segna conclusa”. A quel punto puoi scrivere in privato come ti sei trovato con un compagno. Il feedback resta nel tuo Google Drive: non lo vede nessuno, nemmeno gli organizzatori.",el:"feedbackForm"},
  {t:"Pronto! ✅",b:"Puoi rivedere questa guida quando vuoi con il pulsante “Come funziona” in fondo alla pagina.",el:null}];
-let tourI=0,tourEl=null;const TOUR_TAB={profileForm:"profile",suggestions:"profile",matchForm:"create",matches:"matches",feedbackForm:"matches"};
+let tourI=0,tourEl=null;const TOUR_TAB={profileForm:"profile",suggestions:"create",matchForm:"create",matches:"matches",feedbackForm:"matches"};
 function tourSeen(){try{return localStorage.getItem("padelTourSeen")==="1"}catch(e){return false}}
 function tourMark(){try{localStorage.setItem("padelTourSeen","1")}catch(e){}}
 function tourShow(i){tourI=Math.max(0,Math.min(TOUR_STEPS.length-1,i));const st=TOUR_STEPS[tourI];
