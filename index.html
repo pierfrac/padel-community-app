@@ -17,6 +17,7 @@ label{display:block;font-size:13px;font-weight:750;margin:12px 0 5px}input,selec
 button{border:0;border-radius:999px;padding:12px 17px;background:var(--green);color:white;font-weight:750;cursor:pointer;margin-top:12px}button.secondary{background:#e6eee7;color:var(--green)}button.danger{background:#f7e8e6;color:var(--red)}button:disabled{opacity:.5;cursor:wait}
 .notice{border-left:3px solid var(--green);padding-left:12px;font-size:14px}.match{border-top:1px solid var(--line);padding:14px 0}.match:first-child{border-top:0}.matchhead{display:flex;justify-content:space-between;gap:12px;align-items:start}.pill{font-size:12px;background:#e7f2e9;color:var(--green);padding:4px 9px;border-radius:999px;white-space:nowrap}.msg{min-height:22px;font-size:14px;margin-top:8px}.rowbuttons{display:flex;gap:8px;flex-wrap:wrap}.score{font-weight:800;color:var(--green)}#app{display:none}.small{font-size:12px}.status{padding:9px 12px;border-radius:10px;background:#eef3ed;margin-top:12px;font-size:13px}
 .sharebox{background:var(--mint);border-radius:14px;padding:12px;margin-top:10px}a.btn{display:inline-block;text-decoration:none;border-radius:999px;padding:12px 17px;background:#e6eee7;color:var(--green);font-weight:750;margin-top:12px}a.btn:hover{background:#d9e6db}.invite{background:#fff;border:2px solid var(--green);border-radius:16px;padding:12px 16px;margin:14px 0}.invite[hidden]{display:none}.invite strong{font-size:18px}.qrcard{background:#fff;border-radius:16px;padding:16px;margin-top:12px;text-align:center}.qrcard h3{margin:0 0 4px;font-size:18px}.qrcard img{margin:12px auto 8px!important}.qrcard .cta{font-weight:750;color:var(--green)}.sharebox img{display:block;margin:10px auto 0;background:#fff;padding:8px;border-radius:8px}.match.focus{outline:2px solid var(--green);border-radius:10px}#busy{position:fixed;top:0;left:0;right:0;background:var(--green);color:#fff;text-align:center;font-size:13px;padding:4px;display:none;z-index:10}
+.tour{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:min(520px,calc(100% - 28px));border:2px solid var(--green);border-radius:18px;padding:16px 18px;background:#fff;color:var(--ink);box-shadow:0 10px 40px rgba(0,0,0,.25);z-index:20;margin:0}.tour h3{margin:0 0 4px;font-size:18px}.tour .step{font-size:12px;color:var(--muted);font-weight:750}.tour .rowbuttons{justify-content:space-between;margin-top:6px}.tour-hl{outline:3px solid var(--green);outline-offset:3px;border-radius:18px;transition:outline .2s}
 </style></head>
 <body><div id="busy" role="status" aria-live="polite">Caricamento…</div>
 <main>
@@ -51,8 +52,9 @@ button{border:0;border-radius:999px;padding:12px 17px;background:var(--green);co
 <div class="rowbuttons"><button class="secondary" id="refresh">Aggiorna dati</button><button class="secondary" id="privateDrive">Attiva / aggiorna Drive privato</button><button class="danger" id="signOut">Esci</button></div>
 <div id="driveStatus" class="status">I feedback non vengono trasferiti al foglio condiviso.</div>
 </div>
-<footer class="muted small" style="padding:18px 4px">MVP in prova. Per usare la community servono il deployment Apps Script e la configurazione OAuth del proprietario. Le iscrizioni sono limitate a quattro persone per partita.<br><span id="versions">Versioni: caricamento…</span></footer>
+<footer class="muted small" style="padding:18px 4px">MVP in prova. Per usare la community servono il deployment Apps Script e la configurazione OAuth del proprietario. Le iscrizioni sono limitate a quattro persone per partita.<br><button class="secondary" id="howTo" type="button">Come funziona</button><br><span id="versions">Versioni: caricamento…</span></footer>
 </main>
+<dialog id="tour" class="tour" aria-labelledby="tourTitle"><div class="step" id="tourStep"></div><h3 id="tourTitle"></h3><p id="tourBody"></p><div class="rowbuttons"><button class="secondary" id="tourSkip" type="button">Salta</button><span><button class="secondary" id="tourPrev" type="button">Indietro</button> <button id="tourNext" type="button">Avanti</button></span></div></dialog>
 <script>
 const GOOGLE_CLIENT_ID = (window.PADEL_CONFIG||{}).googleClientId||"";
 const API_URL = (window.PADEL_CONFIG||{}).apiUrl||"";
@@ -67,7 +69,7 @@ function server(method,arg,ok,bad){if(!idToken){bad({message:"Accedi con Google 
 function setMessage(id,text){$(id).textContent=text||"";}
 function initGoogle(){if(!GOOGLE_CLIENT_ID){setMessage("authMessage","Configurazione incompleta: il proprietario deve impostare GOOGLE_CLIENT_ID nelle Proprietà script.");return;}
  const start=()=>{if(!window.google||!google.accounts||!google.accounts.id){setTimeout(start,200);return;}
- google.accounts.id.initialize({client_id:GOOGLE_CLIENT_ID,callback:async response=>{idToken=response.credential;try{const p=JSON.parse(atob(idToken.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));user={email:p.email,sub:p.sub};setMessage("authMessage","Accesso effettuato: "+user.email);$("app").style.display="block";await refreshData();}catch(e){setMessage("authMessage","Impossibile leggere il profilo Google.");}}});
+ google.accounts.id.initialize({client_id:GOOGLE_CLIENT_ID,callback:async response=>{idToken=response.credential;try{const p=JSON.parse(atob(idToken.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));user={email:p.email,sub:p.sub};setMessage("authMessage","Accesso effettuato: "+user.email);$("app").style.display="block";await refreshData();maybeStartTour();}catch(e){setMessage("authMessage","Impossibile leggere il profilo Google.");}}});
  google.accounts.id.renderButton($("googleButton"),{theme:"outline",size:"large",shape:"pill",text:"signin_with",locale:"it"});
  };start();}
 function refreshData(){server("getAppData",null,d=>{data=d;user=d.user;const me=d.me;if(me){$("name").value=me.displayName||"";$("level").value=me.skillLevel||"";$("side").value=me.preferredSide||"indifferent";}render();},e=>setMessage("matchesMsg",e.message||"Errore di caricamento"));}
@@ -89,6 +91,26 @@ function toggleShare(m,item){const old=item.querySelector(".sharebox");if(old){o
 function calParts(m){const st=new Date(m.dateTime);if(isNaN(st.getTime()))return null;const en=new Date(st.getTime()+90*60000);const f=d=>d.toISOString().replace(/[-:]/g,"").replace(/\.\d+Z$/,"Z");return {s:f(st),e:f(en),title:"Padel · "+m.venue,details:(m.notes?m.notes+"\n\n":"")+"Partita organizzata con Padel Community."};}
 function googleCalUrl(m){const c=calParts(m);if(!c)return "";return "https://calendar.google.com/calendar/render?action=TEMPLATE&text="+encodeURIComponent(c.title)+"&dates="+c.s+"/"+c.e+"&location="+encodeURIComponent(m.venue)+"&details="+encodeURIComponent(c.details);}
 function downloadIcs(m){const c=calParts(m);if(!c)return;const esc=t=>String(t).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");const ics=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Padel Community//IT","BEGIN:VEVENT","UID:"+m.matchId+"@padel-community","DTSTAMP:"+c.s,"DTSTART:"+c.s,"DTEND:"+c.e,"SUMMARY:"+esc(c.title),"LOCATION:"+esc(m.venue),"DESCRIPTION:"+esc(c.details),"END:VEVENT","END:VCALENDAR"].join("\r\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([ics],{type:"text/calendar"}));a.download="partita-padel.ics";document.body.append(a);a.click();a.remove();}
+const TOUR_STEPS=[
+ {t:"Benvenuto in Padel Community 🎾",b:"Qui trovi partite, ti iscrivi e scegli con chi giocare. Ti mostro in breve come funziona: ci vogliono 30 secondi.",el:null},
+ {t:"1 · Il tuo profilo",b:"Scrivi come vuoi essere chiamato, il tuo livello e se preferisci giocare a destra o a sinistra. Servono a calcolare con chi giochi meglio. Premi “Salva profilo”.",el:"profileForm"},
+ {t:"2 · Partite aperte",b:"Ogni partita ha 4 posti. Premi “Mi iscrivo” o “Annulla iscrizione”. Con “Condividi” inviti i tuoi amici via WhatsApp, email, link o QR code; con “Aggiungi al calendario” la salvi sul tuo calendario.",el:"matches"},
+ {t:"3 · Proponi una partita",b:"Indica circolo, data e ora: sei iscritto in automatico. Poi condividi la partita per riempire i posti.",el:"matchForm"},
+ {t:"4 · Feedback riservato",b:"Dopo la partita, chi l'ha proposta preme “Segna conclusa”. A quel punto puoi scrivere in privato come ti sei trovato con un compagno. Il feedback resta nel tuo Google Drive: non lo vede nessuno, nemmeno gli organizzatori.",el:"feedbackForm"},
+ {t:"5 · Match Score",b:"Qui vedi i giocatori più compatibili con te, in base a livello, lato preferito e ai tuoi feedback privati. È un suggerimento, non un giudizio.",el:"suggestions"},
+ {t:"Pronto! ✅",b:"Puoi rivedere questa guida quando vuoi con il pulsante “Come funziona” in fondo alla pagina.",el:null}];
+let tourI=0,tourEl=null;
+function tourSeen(){try{return localStorage.getItem("padelTourSeen")==="1"}catch(e){return false}}
+function tourMark(){try{localStorage.setItem("padelTourSeen","1")}catch(e){}}
+function tourShow(i){tourI=Math.max(0,Math.min(TOUR_STEPS.length-1,i));const st=TOUR_STEPS[tourI];
+ if(tourEl)tourEl.classList.remove("tour-hl");tourEl=null;
+ $("tourStep").textContent="Passo "+(tourI+1)+" di "+TOUR_STEPS.length;$("tourTitle").textContent=st.t;$("tourBody").textContent=st.b;
+ $("tourPrev").style.visibility=tourI?"visible":"hidden";$("tourNext").textContent=tourI===TOUR_STEPS.length-1?"Fine":"Avanti";
+ if(st.el){const t=$(st.el),panel=t&&(t.closest(".panel")||t);if(panel){panel.classList.add("tour-hl");tourEl=panel;panel.scrollIntoView({block:"start",behavior:"smooth"});}}}
+function tourStart(){const d=$("tour");if(!d.open)d.show();tourShow(0);}
+function tourEnd(){if(tourEl)tourEl.classList.remove("tour-hl");tourEl=null;$("tour").close();tourMark();}
+function maybeStartTour(){if(((window.PADEL_CONFIG||{}).walkthrough)===false||tourSeen())return;tourStart();}
+$("tourNext").onclick=()=>tourI>=TOUR_STEPS.length-1?tourEnd():tourShow(tourI+1);$("tourPrev").onclick=()=>tourShow(tourI-1);$("tourSkip").onclick=tourEnd;$("howTo").onclick=tourStart;
 function render(){const root=$("matches");root.replaceChildren();
  if(!data.matches.length)root.textContent="Non ci sono ancora partite aperte. Proponine una qui sotto.";
  data.matches.forEach(m=>{const item=document.createElement("article");item.className="match";const head=document.createElement("div");head.className="matchhead";const title=document.createElement("strong");title.textContent=m.venue;const pill=document.createElement("span");pill.className="pill";pill.textContent=m.registeredCount+"/4 iscritti";head.append(title,pill);const detail=document.createElement("p");detail.className="muted";const d=new Date(m.dateTime);detail.textContent=(isNaN(d.getTime())?"Data da definire":d.toLocaleString("it-IT"))+(m.notes?" · "+m.notes:"");
