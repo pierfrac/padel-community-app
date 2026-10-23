@@ -47,7 +47,7 @@ button{border:0;border-radius:999px;padding:12px 17px;background:var(--green);co
 <div class="rowbuttons"><button class="secondary" id="refresh">Aggiorna dati</button><button class="secondary" id="privateDrive">Attiva / aggiorna Drive privato</button><button class="danger" id="signOut">Esci</button></div>
 <div id="driveStatus" class="status">I feedback non vengono trasferiti al foglio condiviso.</div>
 </div>
-<footer class="muted small" style="padding:18px 4px">MVP in prova. Per usare la community servono il deployment Apps Script e la configurazione OAuth del proprietario. Le iscrizioni sono limitate a quattro persone per partita.</footer>
+<footer class="muted small" style="padding:18px 4px">MVP in prova. Per usare la community servono il deployment Apps Script e la configurazione OAuth del proprietario. Le iscrizioni sono limitate a quattro persone per partita.<br><span id="versions">Versioni: caricamento…</span></footer>
 </main>
 <script>
 const GOOGLE_CLIENT_ID = (window.PADEL_CONFIG||{}).googleClientId||"";
@@ -89,4 +89,7 @@ function score(a,b){let s=50;const x=a.preferredSide||"indifferent",y=b.preferre
 function renderSuggestions(){const root=$("suggestions");root.replaceChildren();if(!data.me){root.textContent="Salva il tuo profilo per vedere suggerimenti.";return;}const others=data.players.filter(p=>p.playerId!==user.playerId).map(p=>({p:p,s:score(data.me,p)})).sort((a,b)=>b.s-a.s);if(!others.length){root.textContent="Quando ci saranno altri profili, vedrai qui i suggerimenti personalizzati.";return;}others.slice(0,8).forEach(({p,s})=>{const row=document.createElement("div");row.className="match";const strong=document.createElement("strong");strong.textContent=p.displayName;const detail=document.createElement("p");detail.className="muted";const side={right:"destra",left:"sinistra",indifferent:"indifferente"}[p.preferredSide]||"indifferente";detail.textContent=p.skillLevel+" · lato "+side;const scoreEl=document.createElement("div");scoreEl.className="score";scoreEl.textContent="Match Score: "+s+"/100";row.append(strong,detail,scoreEl);root.append(row);});}
 $("refresh").onclick=()=>refreshData();$("signOut").onclick=()=>{idToken="";driveToken="";user=null;$("app").style.display="none";$("googleButton").replaceChildren();setMessage("authMessage","Disconnesso. Ricarica la pagina per accedere di nuovo.");};
 initGoogle();
+(function(){const f=(window.PADEL_CONFIG||{}).version||"?";const el=$("versions");el.textContent="Front end v"+f+" · Backend: verifica…";
+if(!API_URL){el.textContent="Front end v"+f+" · Backend: apiUrl mancante";return;}
+fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({method:"version"})}).then(r=>r.json()).then(j=>{el.textContent="Front end v"+f+" · Backend v"+(j.version||"?")}).catch(()=>{el.textContent="Front end v"+f+" · Backend non raggiungibile"});})();
 </script></body></html>
