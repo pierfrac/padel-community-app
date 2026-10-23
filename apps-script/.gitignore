@@ -1,0 +1,8 @@
+# Local Apps Script project ID / clasp settings
+.clasp.json
+
+# Portable Node.js runtime downloaded by the Windows launcher
+.runtime/
+
+# Local npm logs/cache if created in this directory
+npm-debug.log*

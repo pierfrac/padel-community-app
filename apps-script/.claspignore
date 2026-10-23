@@ -1,0 +1,18 @@
+# Portable Node.js runtime and all nested npm dependencies
+.runtime/
+.runtime/**
+**/.runtime/**
+node_modules/
+node_modules/**
+**/node_modules/**
+
+# Local clasp credentials
+.clasp.json
+
+# Deployment tooling and documentation are not Apps Script source
+launcher/
+launcher/**
+.gitignore
+.claspignore
+DEPLOY-CLASP.md
+README.md

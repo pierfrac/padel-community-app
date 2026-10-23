@@ -1,0 +1,22 @@
+name: Apps Script MVP validation
+
+on:
+  push:
+    paths:
+      - "apps-script/**"
+      - ".github/workflows/apps-script-ci.yml"
+  pull_request:
+    paths:
+      - "apps-script/**"
+      - ".github/workflows/apps-script-ci.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate Apps Script and browser JavaScript syntax
+        run: node apps-script/validate.mjs
