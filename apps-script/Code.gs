@@ -4,7 +4,7 @@
  * This script is bound to the community spreadsheet.
  */
 const HEADERS = {
-  Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt"],
+  Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt","photoUrl"],
   Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId"],
   Registrations: ["registrationId","matchId","playerId","status","createdAt","partnerId"],
   FeedbackPrivate: ["DO_NOT_USE"]
@@ -16,7 +16,7 @@ function doGet() {
   return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
 }
 
-const BACKEND_VERSION = "2026-10-23.4";
+const BACKEND_VERSION = "2026-10-23.5";
 const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
@@ -66,7 +66,7 @@ function getPublicConfig() {
 function getAppData(idToken) {
   const user = verifyUser_(idToken);
   const players = readRows_("Players").filter(r => r.playerId && truthy_(r.active)).map(function(r) {
-    return {playerId:String(r.playerId),displayName:String(r.displayName || "Giocatore"),skillLevel:String(r.skillLevel || "Da definire"),preferredSide:String(r.preferredSide || "indifferent"),active:true};
+    return {playerId:String(r.playerId),displayName:String(r.displayName || "Giocatore"),skillLevel:String(r.skillLevel || "Da definire"),preferredSide:String(r.preferredSide || "indifferent"),photoUrl:safePhoto_(r.photoUrl),active:true};
   });
   const registrations = readRows_("Registrations").filter(r => r.registrationId && String(r.status) === "joined").map(function(r) {
     return {registrationId:String(r.registrationId),matchId:String(r.matchId),playerId:String(r.playerId),status:String(r.status),partnerId:String(r.partnerId || "")};
@@ -92,7 +92,8 @@ function saveProfile(idToken, input) {
     throw new Error("Inserisci nome, livello e lato preferito.");
   const sh=sheet_("Players"), rows=readRows_("Players");
   const existing=rows.find(r=>String(r.playerId)===user.playerId);
-  const values=[user.playerId,name,user.email,level,side,true,existing?existing.createdAt:new Date(),new Date()];
+  const photo=input.showPhoto===true?safePhoto_(user.picture):"";
+  const values=[user.playerId,name,user.email,level,side,true,existing?existing.createdAt:new Date(),new Date(),photo];
   if(existing) sh.getRange(existing._row,1,1,values.length).setValues([values]); else sh.appendRow(values);
   return {message:"Profilo salvato.",playerId:user.playerId};
 }
@@ -221,9 +222,13 @@ function verifyUser_(idToken) {
   const allowedEmails=(props.getProperty("ALLOWED_EMAILS")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
   if(allowedEmails.length && allowedEmails.indexOf(email)<0) throw new Error("Questo account non è ancora abilitato alla community. Chiedi all'amministratore di aggiungere la tua Gmail.");
   const adminEmails=(props.getProperty("ADMIN_EMAILS")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
-  return {email:email,playerId:"google:"+token.sub,isAdmin:adminEmails.indexOf(email)>=0};
+  return {email:email,playerId:"google:"+token.sub,isAdmin:adminEmails.indexOf(email)>=0,picture:String(token.picture||"")};
 }
 
+function safePhoto_(url) {
+  const u=String(url||"");
+  return /^https:\/\/[a-z0-9-]+\.googleusercontent\.com\/[A-Za-z0-9_\-\/=.%:~]{1,400}$/.test(u)?u:"";
+}
 function requireProfile_(user) {
   const p=readRows_("Players").find(r=>String(r.playerId)===user.playerId&&truthy_(r.active)&&String(r.displayName||"").trim());
   if(!p) throw new Error("Prima di iscriverti o proporre una partita salva il tuo profilo (nome, livello e lato).");
