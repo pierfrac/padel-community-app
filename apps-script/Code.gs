@@ -16,7 +16,7 @@ function doGet() {
   return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
 }
 
-const BACKEND_VERSION = "2026-10-23.3";
+const BACKEND_VERSION = "2026-10-23.4";
 const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
@@ -99,6 +99,7 @@ function saveProfile(idToken, input) {
 
 function createMatch(idToken,input) {
   const user=verifyUser_(idToken); input=input||{};
+  requireProfile_(user);
   const venue=clean_(input.venue,120), dateText=clean_(input.dateTime,80), notes=clean_(input.notes,500);
   if(!venue||!dateText) throw new Error("Inserisci campo e data/ora.");
   const date=new Date(dateText); if(isNaN(date.getTime())||date.getTime()<Date.now()-60000) throw new Error("Scegli una data futura valida.");
@@ -120,6 +121,7 @@ function createMatch(idToken,input) {
 
 function registerForMatch(idToken,input) {
   const user=verifyUser_(idToken); input=input||{};
+  requireProfile_(user);
   const matchId=clean_(input.matchId,80);
   const lock=LockService.getScriptLock();
   lock.waitLock(10000);
@@ -222,6 +224,10 @@ function verifyUser_(idToken) {
   return {email:email,playerId:"google:"+token.sub,isAdmin:adminEmails.indexOf(email)>=0};
 }
 
+function requireProfile_(user) {
+  const p=readRows_("Players").find(r=>String(r.playerId)===user.playerId&&truthy_(r.active)&&String(r.displayName||"").trim());
+  if(!p) throw new Error("Prima di iscriverti o proporre una partita salva il tuo profilo (nome, livello e lato).");
+}
 function readRows_(name) {
   const sh=sheet_(name); if(sh.getLastRow()<2) return [];
   const headers=HEADERS[name];
