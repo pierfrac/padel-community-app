@@ -10,3 +10,8 @@ Perché non basta `/exec`: dentro Apps Script la pagina gira su `*.googleusercon
 3. Apps Script: Esegui deployment → App web → esegui come **proprietario**, accesso **Chiunque** (necessario per le chiamate `fetch`; l'accesso ai dati è protetto dalla verifica server-side dell'ID token e da `ALLOWED_EMAILS`). Ripubblica una nuova versione dopo aver aggiornato `Code.gs`.
 4. Compila `web/config.js` con `googleClientId` e `apiUrl` (URL `/exec`) e ripubblica.
 5. Prova: login, profilo, partita, iscrizione, autorizzazione Drive, salvataggio e lettura del feedback.
+
+## Guida introduttiva (walkthrough)
+- Al primo accesso parte una guida in 7 passi che spiega profilo, partite, condivisione, feedback privato e Match Score.
+- Si può disattivare impostando `walkthrough: false` in `config.js`: non parte più da sola, ma il pulsante **Come funziona** in fondo alla pagina la riapre quando serve.
+- Il browser ricorda che l'hai già vista (`localStorage`, chiave `padelTourSeen`). Per rivederla come al primo accesso cancella i dati del sito.
