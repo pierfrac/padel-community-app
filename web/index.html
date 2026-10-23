@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <script src="config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{--bg:#f3f6f1;--ink:#1d2922;--muted:#66736a;--green:#176b4d;--mint:#dcefe2;--line:#dfe7df;--white:#fff;--red:#a13d35}
@@ -15,8 +16,10 @@ h1{font-size:clamp(32px,8vw,48px);line-height:1.03;letter-spacing:-.04em;margin:
 label{display:block;font-size:13px;font-weight:750;margin:12px 0 5px}input,select,textarea{width:100%;border:1px solid #cbd6cd;border-radius:10px;padding:12px;background:white;color:var(--ink);font:inherit}
 button{border:0;border-radius:999px;padding:12px 17px;background:var(--green);color:white;font-weight:750;cursor:pointer;margin-top:12px}button.secondary{background:#e6eee7;color:var(--green)}button.danger{background:#f7e8e6;color:var(--red)}button:disabled{opacity:.5;cursor:wait}
 .notice{border-left:3px solid var(--green);padding-left:12px;font-size:14px}.match{border-top:1px solid var(--line);padding:14px 0}.match:first-child{border-top:0}.matchhead{display:flex;justify-content:space-between;gap:12px;align-items:start}.pill{font-size:12px;background:#e7f2e9;color:var(--green);padding:4px 9px;border-radius:999px;white-space:nowrap}.msg{min-height:22px;font-size:14px;margin-top:8px}.rowbuttons{display:flex;gap:8px;flex-wrap:wrap}.score{font-weight:800;color:var(--green)}#app{display:none}.small{font-size:12px}.status{padding:9px 12px;border-radius:10px;background:#eef3ed;margin-top:12px;font-size:13px}
+.sharebox{background:var(--mint);border-radius:14px;padding:12px;margin-top:10px}.sharebox a.btn{display:inline-block;text-decoration:none}.sharebox img{display:block;margin:10px auto 0;background:#fff;padding:8px;border-radius:8px}.match.focus{outline:2px solid var(--green);border-radius:10px}#busy{position:fixed;top:0;left:0;right:0;background:var(--green);color:#fff;text-align:center;font-size:13px;padding:4px;display:none;z-index:10}
 </style></head>
-<body><main>
+<body><div id="busy" role="status" aria-live="polite">Caricamento…</div>
+<main>
 <section class="hero">
 <div class="eyebrow">Padel Community</div><h1>Giochiamo meglio insieme.</h1>
 <p>Trova partite, incontra compagni compatibili e organizza il campo. Il Match Score combina livello, lato preferito e le tue esperienze passate per aiutarti a scegliere con chi giocare.</p>
@@ -55,8 +58,11 @@ const API_URL = (window.PADEL_CONFIG||{}).apiUrl||"";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 let idToken="",user=null,data={players:[],matches:[],registrations:[]},driveToken="",driveFileId="",privateFeedback={};
 const $=id=>document.getElementById(id);
+let busyCount=0;
+function setBusy(d){busyCount=Math.max(0,busyCount+d);$("busy").style.display=busyCount?"block":"none";}
 function server(method,arg,ok,bad){if(!idToken){bad({message:"Accedi con Google prima di continuare."});return}if(!API_URL){bad({message:"Configurazione incompleta: manca apiUrl in config.js."});return}
- fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({method:method,idToken:idToken,arg:arg})}).then(r=>r.text().then(t=>{let j;try{j=JSON.parse(t)}catch(e){throw new Error("risposta non valida (HTTP "+r.status+"): "+t.replace(/<[^>]*>/g," ").trim().slice(0,160))}return j})).then(j=>j.ok?ok(j.result):bad({message:j.error||"Errore"})).catch(e=>bad({message:"Server non raggiungibile ("+(e&&e.message||e)+")."}));}
+ setBusy(1);const done=f=>x=>{setBusy(-1);f(x)};ok=done(ok);bad=done(bad);
+ fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({method:method,idToken:idToken,arg:arg})}).then(r=>r.text().then(t=>{let j;try{j=JSON.parse(t)}catch(e){throw new Error("risposta non valida (HTTP "+r.status+")")}return j})).then(j=>j.ok?ok(j.result):bad({message:j.error||"Errore"})).catch(e=>bad({message:"Server non raggiungibile ("+(e&&e.message||e)+"). Riprova tra qualche secondo."}));}
 function setMessage(id,text){$(id).textContent=text||"";}
 function initGoogle(){if(!GOOGLE_CLIENT_ID){setMessage("authMessage","Configurazione incompleta: il proprietario deve impostare GOOGLE_CLIENT_ID nelle Proprietà script.");return;}
  const start=()=>{if(!window.google||!google.accounts||!google.accounts.id){setTimeout(start,200);return;}
@@ -64,12 +70,26 @@ function initGoogle(){if(!GOOGLE_CLIENT_ID){setMessage("authMessage","Configuraz
  google.accounts.id.renderButton($("googleButton"),{theme:"outline",size:"large",shape:"pill",text:"signin_with",locale:"it"});
  };start();}
 function refreshData(){server("getAppData",null,d=>{data=d;user=d.user;const me=d.me;if(me){$("name").value=me.displayName||"";$("level").value=me.skillLevel||"";$("side").value=me.preferredSide||"indifferent";}render();},e=>setMessage("matchesMsg",e.message||"Errore di caricamento"));}
+let focusMatch=new URLSearchParams(location.search).get("match")||"";
+function shareUrl(m){const u=new URL(location.href);u.search="";u.hash="";u.searchParams.set("match",m.matchId);return u.toString();}
+function shareText(m,url){const d=new Date(m.dateTime);return "Partita di padel: "+m.venue+" · "+(isNaN(d.getTime())?"data da definire":d.toLocaleString("it-IT"))+"\nIscriviti qui: "+url;}
+function toggleShare(m,item){const old=item.querySelector(".sharebox");if(old){old.remove();return;}
+ const url=shareUrl(m),text=shareText(m,url),box=document.createElement("div");box.className="sharebox";
+ const row=document.createElement("div");row.className="rowbuttons";
+ const link=(label,href)=>{const a=document.createElement("a");a.className="btn secondary";a.textContent=label;a.href=href;a.target="_blank";a.rel="noopener noreferrer";return a;};
+ row.append(link("WhatsApp","https://wa.me/?text="+encodeURIComponent(text)),link("Email","mailto:?subject="+encodeURIComponent("Partita di padel · "+m.venue)+"&body="+encodeURIComponent(text)));
+ const copy=document.createElement("button");copy.className="secondary";copy.textContent="Copia link";copy.onclick=()=>{(navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(()=>{copy.textContent="Copiato!"},()=>{window.prompt("Copia il link:",url)});};row.append(copy);
+ if(navigator.share){const nat=document.createElement("button");nat.className="secondary";nat.textContent="Altro…";nat.onclick=()=>navigator.share({title:"Partita di padel",text:text,url:url}).catch(()=>{});row.append(nat);}
+ const qrBtn=document.createElement("button");qrBtn.className="secondary";qrBtn.textContent="QR code";qrBtn.onclick=()=>{const old=box.querySelector("img,.qrmsg");if(old){old.remove();return;}
+  if(typeof qrcode==="undefined"){const msg=document.createElement("p");msg.className="muted qrmsg";msg.textContent="QR code non disponibile: usa il link.";box.append(msg);return;}
+  const q=qrcode(0,"M");q.addData(url);q.make();const img=document.createElement("img");img.alt="QR code per iscriversi alla partita";img.width=200;img.height=200;img.src=q.createDataURL(4);box.append(img);};row.append(qrBtn);
+ box.append(row);item.append(box);}
 function render(){const root=$("matches");root.replaceChildren();
  if(!data.matches.length)root.textContent="Non ci sono ancora partite aperte. Proponine una qui sotto.";
  data.matches.forEach(m=>{const item=document.createElement("article");item.className="match";const head=document.createElement("div");head.className="matchhead";const title=document.createElement("strong");title.textContent=m.venue;const pill=document.createElement("span");pill.className="pill";pill.textContent=m.registeredCount+"/4 iscritti";head.append(title,pill);const detail=document.createElement("p");detail.className="muted";const d=new Date(m.dateTime);detail.textContent=(isNaN(d.getTime())?"Data da definire":d.toLocaleString("it-IT"))+(m.notes?" · "+m.notes:"");
  const btns=document.createElement("div");btns.className="rowbuttons";const own=data.registrations.some(r=>r.matchId===m.matchId&&r.playerId===user.playerId);const join=document.createElement("button");join.className="secondary";join.textContent=own?"Annulla iscrizione":"Mi iscrivo";join.disabled=m.registeredCount>=4&&!own;join.onclick=()=>server(own?"cancelRegistration":"registerForMatch",{matchId:m.matchId},r=>{setMessage("matchesMsg",r.message);refreshData();},e=>setMessage("matchesMsg",e.message||"Errore"));btns.append(join);
  if(m.createdBy===user.playerId||user.isAdmin){const cancel=document.createElement("button");cancel.className="danger";cancel.textContent="Annulla partita";cancel.onclick=()=>{if(confirm("Annullare questa partita?"))server("cancelMatch",{matchId:m.matchId},r=>{setMessage("matchesMsg",r.message);refreshData();},e=>setMessage("matchesMsg",e.message||"Errore"));};btns.append(cancel);}
- if((m.createdBy===user.playerId||user.isAdmin)&&m.status!=="completed"&&m.status!=="cancelled"){const complete=document.createElement("button");complete.className="secondary";complete.textContent="Segna conclusa";complete.onclick=()=>server("completeMatch",{matchId:m.matchId},r=>{setMessage("matchesMsg",r.message);refreshData();},e=>setMessage("matchesMsg",e.message||"Errore"));btns.append(complete);}item.append(head,detail,btns);root.append(item);});
+ if((m.createdBy===user.playerId||user.isAdmin)&&m.status!=="completed"&&m.status!=="cancelled"){const complete=document.createElement("button");complete.className="secondary";complete.textContent="Segna conclusa";complete.onclick=()=>server("completeMatch",{matchId:m.matchId},r=>{setMessage("matchesMsg",r.message);refreshData();},e=>setMessage("matchesMsg",e.message||"Errore"));btns.append(complete);}const shareBtn=document.createElement("button");shareBtn.className="secondary";shareBtn.textContent="Condividi";shareBtn.onclick=()=>toggleShare(m,item);btns.append(shareBtn);if(focusMatch&&m.matchId===focusMatch){item.classList.add("focus");setTimeout(()=>item.scrollIntoView({block:"center"}),50);focusMatch="";}item.append(head,detail,btns);root.append(item);});
  fill($("feedbackMatch"),data.matches.filter(m=>m.status==="completed"&&data.registrations.some(r=>r.matchId===m.matchId&&r.playerId===user.playerId)).map(m=>({value:m.matchId,label:m.venue+" · "+new Date(m.dateTime).toLocaleString("it-IT")})),"Seleziona partita");renderSuggestions();}
 function fill(el,items,placeholder){const old=el.value;el.replaceChildren();const first=document.createElement("option");first.value="";first.textContent=placeholder;el.append(first);items.forEach(x=>{const o=document.createElement("option");o.value=x.value;o.textContent=x.label;el.append(o)});if(items.some(x=>x.value===old))el.value=old;}
 $("profileForm").onsubmit=e=>{e.preventDefault();server("saveProfile",{displayName:$("name").value,skillLevel:$("level").value,preferredSide:$("side").value},r=>{setMessage("profileMsg",r.message);refreshData();},err=>setMessage("profileMsg",err.message||"Errore"));};
