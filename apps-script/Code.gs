@@ -6,7 +6,7 @@
 const HEADERS = {
   Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt"],
   Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId"],
-  Registrations: ["registrationId","matchId","playerId","status","createdAt"],
+  Registrations: ["registrationId","matchId","playerId","status","createdAt","partnerId"],
   FeedbackPrivate: ["DO_NOT_USE"]
 };
 
@@ -16,8 +16,8 @@ function doGet() {
   return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
 }
 
-const BACKEND_VERSION = "2026-10-23.2";
-const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch"];
+const BACKEND_VERSION = "2026-10-23.3";
+const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 function doPost(e) {
@@ -69,7 +69,7 @@ function getAppData(idToken) {
     return {playerId:String(r.playerId),displayName:String(r.displayName || "Giocatore"),skillLevel:String(r.skillLevel || "Da definire"),preferredSide:String(r.preferredSide || "indifferent"),active:true};
   });
   const registrations = readRows_("Registrations").filter(r => r.registrationId && String(r.status) === "joined").map(function(r) {
-    return {registrationId:String(r.registrationId),matchId:String(r.matchId),playerId:String(r.playerId),status:String(r.status)};
+    return {registrationId:String(r.registrationId),matchId:String(r.matchId),playerId:String(r.playerId),status:String(r.status),partnerId:String(r.partnerId || "")};
   });
   const matches = readRows_("Matches").filter(r => r.matchId && String(r.status) !== "cancelled").map(function(r) {
     return {matchId:String(r.matchId),dateTime:iso_(r.dateTime),venue:String(r.venue || ""),status:String(r.status || "open"),notes:String(r.notes || ""),createdBy:String(r.createdBy || ""),registeredCount:0};
@@ -114,7 +114,7 @@ function createMatch(idToken,input) {
     } catch(err) { throw new Error("Partita non salvata: errore Calendar. "+err.message); }
   }
   sheet_("Matches").appendRow([id,date,venue,user.playerId,"open",notes,created,eventId]);
-  sheet_("Registrations").appendRow([Utilities.getUuid(),id,user.playerId,"joined",created]);
+  sheet_("Registrations").appendRow([Utilities.getUuid(),id,user.playerId,"joined",created,""]);
   return {matchId:id,message:calendarId?"Partita creata e aggiunta al calendario.":"Partita creata. Calendar non è ancora configurato."};
 }
 
@@ -132,7 +132,7 @@ function registerForMatch(idToken,input) {
     if(regs.some(r=>String(r.matchId)===matchId&&String(r.playerId)===user.playerId&&String(r.status)==="joined")) throw new Error("Sei già iscritto a questa partita.");
     const active=regs.filter(r=>String(r.matchId)===matchId&&String(r.status)==="joined");
     if(active.length>=4) throw new Error("La partita è già completa.");
-    sheet_("Registrations").appendRow([Utilities.getUuid(),matchId,user.playerId,"joined",new Date()]);
+    sheet_("Registrations").appendRow([Utilities.getUuid(),matchId,user.playerId,"joined",new Date(),""]);
     return {message:"Iscrizione registrata."};
   } finally {
     lock.releaseLock();
@@ -145,7 +145,36 @@ function cancelRegistration(idToken,input) {
   const row=regs.find(r=>String(r.matchId)===matchId&&String(r.playerId)===user.playerId&&String(r.status)==="joined");
   if(!row) throw new Error("Non risulti iscritto a questa partita.");
   sh.getRange(row._row,4).setValue("cancelled");
+  sh.getRange(row._row,6).setValue("");
+  regs.filter(r=>String(r.matchId)===matchId&&String(r.partnerId||"")===user.playerId).forEach(r=>sh.getRange(r._row,6).setValue(""));
   return {message:"Iscrizione annullata."};
+}
+
+function setPartner(idToken,input) {
+  const user=verifyUser_(idToken); input=input||{};
+  const matchId=clean_(input.matchId,80), partnerId=clean_(input.partnerId,80);
+  const lock=LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh=sheet_("Registrations");
+    const regs=readRows_("Registrations").filter(r=>String(r.matchId)===matchId&&String(r.status)==="joined");
+    const mine=regs.find(r=>String(r.playerId)===user.playerId);
+    if(!mine) throw new Error("Devi prima iscriverti alla partita.");
+    const oldId=String(mine.partnerId||"");
+    if(oldId) { const o=regs.find(r=>String(r.playerId)===oldId&&String(r.partnerId||"")===user.playerId); if(o) sh.getRange(o._row,6).setValue(""); }
+    sh.getRange(mine._row,6).setValue("");
+    if(!partnerId) return {message:"Compagno fisso rimosso."};
+    if(partnerId===user.playerId) throw new Error("Non puoi scegliere te stesso.");
+    const other=regs.find(r=>String(r.playerId)===partnerId);
+    if(!other) throw new Error("Il compagno scelto non è iscritto a questa partita.");
+    const op=String(other.partnerId||"");
+    if(op&&op!==user.playerId) throw new Error("Il compagno scelto ha già un compagno fisso.");
+    sh.getRange(mine._row,6).setValue(partnerId);
+    sh.getRange(other._row,6).setValue(user.playerId);
+    return {message:"Compagno fisso impostato."};
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function completeMatch(idToken,input) {

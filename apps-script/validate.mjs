@@ -19,7 +19,8 @@ for (const required of [
   "function registerForMatch(idToken,input)",
   "function cancelRegistration(idToken,input)",
   "function completeMatch(idToken,input)",
-  "function cancelMatch(idToken,input)"
+  "function cancelMatch(idToken,input)",
+  "function setPartner(idToken,input)"
 ]) assert.ok(gs.includes(required), "Missing backend function: " + required);
 
 assert.ok(!/function\s+(getPrivateFeedback|submitPrivateFeedback)\s*\(/.test(gs), "Private feedback must not be exposed by the Apps Script backend");
