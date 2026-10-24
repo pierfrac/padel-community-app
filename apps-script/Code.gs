@@ -16,14 +16,16 @@ function doGet() {
   return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
 }
 
-const BACKEND_VERSION = "2026-10-24.7";
+const BACKEND_VERSION = "2026-10-24.8";
 const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData","lookupEmail"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
+var CURRENT_INVITE_TOKEN = "";
 function doPost(e) {
   let out;
   try {
     const req = JSON.parse(e.postData.contents);
+    CURRENT_INVITE_TOKEN = String(req.inviteToken || "").slice(0,80);
     if (req.method === "version") return ContentService.createTextOutput(JSON.stringify({ok:true,version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
     if (API_METHODS.indexOf(req.method) < 0) throw new Error("Operazione non valida.");
     out = {ok:true, result:this[req.method](req.idToken, req.arg)};
@@ -78,7 +80,8 @@ function getAppData(idToken) {
   registrations.forEach(r => counts[r.matchId]=(counts[r.matchId]||0)+1);
   matches.forEach(m => { m.registeredCount=counts[m.matchId]||0; m.seatsTaken=m.lineup?m.lineup.filter(x=>x.playerId||x.name).length:m.registeredCount; });
   const mine = players.find(p => p.playerId === user.playerId) || null;
-  return {user:{email:user.email,playerId:user.playerId,isAdmin:user.isAdmin},me:mine,players:players,matches:matches,registrations:registrations};
+  const inviteStatus=!CURRENT_INVITE_TOKEN?"":(matches.some(m=>m.lineup&&m.lineup.some(x=>x.mine&&!x.playerId))?"ok":"used");
+  return {user:{email:user.email,playerId:user.playerId,isAdmin:user.isAdmin},me:mine,players:players,matches:matches,registrations:registrations,inviteStatus:inviteStatus};
 }
 
 function saveProfile(idToken, input) {
@@ -142,8 +145,8 @@ function registerForMatch(idToken,input) {
     let slot=-1;
     if(lineup) {
       slot=lineup.findIndex(x=>x.playerId===user.playerId);
-      if(slot<0) { slot=lineup.findIndex(x=>x.email&&x.email===user.email); if(slot>=0) { lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); } }
-      if(slot<0) { slot=pickSlot_(lineup,String(profile.preferredSide||"")); if(slot<0) throw new Error("La partita è già completa."); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); }
+      if(slot<0) { slot=lineup.findIndex(x=>x.email&&(x.email===user.email||(CURRENT_INVITE_TOKEN&&x.token===CURRENT_INVITE_TOKEN))); if(slot>=0) { approveEmail_(user.email); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:"",token:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); } }
+      if(slot<0) { slot=pickSlot_(lineup,String(profile.preferredSide||"")); if(slot<0) throw new Error("La partita è già completa."); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:"",token:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); }
     } else if(active.length>=4) throw new Error("La partita è già completa.");
     sheet_("Registrations").appendRow([Utilities.getUuid(),matchId,user.playerId,"joined",new Date(),""]);
     return {message:"Iscrizione registrata."};
@@ -161,7 +164,7 @@ function cancelRegistration(idToken,input) {
   sh.getRange(row._row,6).setValue("");
   regs.filter(r=>String(r.matchId)===matchId&&String(r.partnerId||"")===user.playerId).forEach(r=>sh.getRange(r._row,6).setValue(""));
   const mrow=readRows_("Matches").find(r=>String(r.matchId)===matchId), lu=mrow&&parseLineup_(mrow.lineup);
-  if(lu) { const i=lu.findIndex(x=>x.playerId===user.playerId); if(i>=0) { lu[i]={playerId:"",name:"",invitedAt:"",reminded:false,email:""}; sheet_("Matches").getRange(mrow._row,9).setValue(JSON.stringify(lu)); } }
+  if(lu) { const i=lu.findIndex(x=>x.playerId===user.playerId); if(i>=0) { lu[i]={playerId:"",name:"",invitedAt:"",reminded:false,email:"",token:""}; sheet_("Matches").getRange(mrow._row,9).setValue(JSON.stringify(lu)); } }
   return {message:"Iscrizione annullata."};
 }
 
@@ -192,9 +195,9 @@ const INVITE_REMINDER_AFTER_MS = 24*60*60*1000;
 const REMINDER_MIN_DAYS_LEFT = 4;
 
 function esc_(t) { return String(t==null?"":t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
-function appLink_(m) {
+function appLink_(m,token) {
   const base=PropertiesService.getScriptProperties().getProperty("APP_URL")||DEFAULT_APP_URL;
-  return base+"?match="+encodeURIComponent(m.matchId)+"&v="+encodeURIComponent(m.venue)+"&d="+encodeURIComponent(new Date(m.date).toISOString());
+  return base+"?match="+encodeURIComponent(m.matchId)+"&v="+encodeURIComponent(m.venue)+"&d="+encodeURIComponent(new Date(m.date).toISOString())+(token?"&t="+encodeURIComponent(token):"");
 }
 function whenText_(d) { return Utilities.formatDate(new Date(d),Session.getScriptTimeZone(),"dd/MM/yyyy 'alle' HH:mm"); }
 function mail_(to,subject,html) {
@@ -204,15 +207,15 @@ function mail_(to,subject,html) {
 function playerMap_() {
   const map={}; readRows_("Players").forEach(r=>{ map[String(r.playerId)]={name:String(r.displayName||""),email:String(r.email||"")}; }); return map;
 }
-function sendEmailInvites_(match,organizerName,emails) {
-  if(!emails||!emails.length) return;
+function sendEmailInvites_(match,organizerName,invites) {
+  if(!invites||!invites.length) return;
   try {
-    emails.forEach(function(email){
+    invites.forEach(function(inv){ const email=inv.email, link=appLink_(match,inv.token);
       mail_(email,"🎾 "+organizerName+" ti ha invitato a una partita di padel",
         "<p>Ciao,</p><p><b>"+esc_(organizerName)+"</b> ti ha invitato a una partita di padel:</p>"+
         "<p><b>"+esc_(match.venue)+"</b><br>"+esc_(whenText_(match.date))+"</p>"+
-        "<p>Ti abbiamo riservato un posto. Per prenderlo: <a href=\""+esc_(appLink_(match))+"\">apri la partita</a>, <b>accedi con Google usando questo indirizzo email ("+esc_(email)+")</b>, salva il tuo profilo (nome, livello e lato preferito) e premi “Accetta invito”.</p>"+
-        "<p style=\"color:#666;font-size:13px\">Non serve una Gmail: va bene qualsiasi indirizzo collegato a un account Google (anche di lavoro o scuola). Se il tuo non lo è ancora, puoi creare un account Google usando questo stesso indirizzo: <a href=\"https://accounts.google.com/signup\">accounts.google.com/signup</a> (scegli «Usa il mio indirizzo email attuale»).</p>"+
+        "<p>Ti abbiamo riservato un posto. Per prenderlo: <a href=\""+esc_(link)+"\">apri la partita</a>, <b>accedi con Google</b>, salva il tuo profilo (nome, livello e lato preferito) e premi “Accetta invito”. Puoi usare qualsiasi account Google, anche diverso da questo indirizzo ("+esc_(email)+"): il link riconosce il tuo invito.</p>"+
+        "<p style=\"color:#666;font-size:13px\">Non serve una Gmail: va bene qualsiasi account Google (anche di lavoro o scuola). Se non ne hai uno, puoi crearne uno con questo stesso indirizzo email o con un altro: <a href=\"https://accounts.google.com/signup\">accounts.google.com/signup</a> (scegli «Usa il mio indirizzo email attuale»).</p>"+
         "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore: se la partita è tra più di "+REMINDER_MIN_DAYS_LEFT+" giorni ti mandiamo un promemoria, altrimenti il posto viene liberato e l'organizzatore viene avvisato.</p>");
     });
   } catch(err) { console.log("Inviti email non inviati: "+err); }
@@ -271,9 +274,9 @@ function processInvites() {
         if((start-now)/DAY>REMINDER_MIN_DAYS_LEFT) {
           s.reminded=true; changed=true;
           mail_(invitee.email,"⏰ Promemoria: hai un invito a una partita di padel",
-            "<p>Ciao "+esc_(invitee.name)+",</p><p>hai ancora un posto riservato per la partita di <b>"+esc_(info.venue)+"</b>, "+esc_(whenText_(info.date))+".</p><p><a href=\""+esc_(appLink_(info))+"\">Apri la partita e premi “Accetta invito”</a>.</p>");
+            "<p>Ciao "+esc_(invitee.name)+",</p><p>hai ancora un posto riservato per la partita di <b>"+esc_(info.venue)+"</b>, "+esc_(whenText_(info.date))+".</p><p><a href=\""+esc_(appLink_(info,s.token))+"\">Apri la partita e premi “Accetta invito”</a>.</p>");
         } else {
-          lineup[i]={playerId:"",name:"",invitedAt:"",reminded:false,email:""}; changed=true;
+          lineup[i]={playerId:"",name:"",invitedAt:"",reminded:false,email:"",token:""}; changed=true;
           mail_(org.email,"Invito scaduto: "+invitee.name+" non ha risposto",
             "<p>Ciao "+esc_(org.name)+",</p><p><b>"+esc_(invitee.name)+"</b> non ha risposto all'invito per la partita di <b>"+esc_(info.venue)+"</b>, "+esc_(whenText_(info.date))+". La partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, quindi l'invito è stato annullato e il posto è di nuovo libero.</p><p><a href=\""+esc_(appLink_(info))+"\">Apri la partita</a> per invitare qualcun altro.</p>");
           mail_(invitee.email,"Invito annullato: partita di padel del "+whenText_(info.date),
@@ -305,12 +308,12 @@ function pickSlot_(lineup,side) {
 function publicLineup_(lu,user,createdBy) {
   if(!lu) return null;
   const owner=user.isAdmin||String(createdBy)===user.playerId;
-  return lu.map(x=>({playerId:x.playerId,name:x.name,emailInvite:!!x.email,mine:!!(x.email&&x.email===user.email),email:owner?x.email:""}));
+  return lu.map(x=>({playerId:x.playerId,name:x.name,emailInvite:!!x.email,mine:!!(x.email&&(x.email===user.email||(CURRENT_INVITE_TOKEN&&x.token===CURRENT_INVITE_TOKEN))),email:owner?x.email:""}));
 }
 function parseLineup_(v) {
   if(!v) return null;
   try { const a=JSON.parse(String(v)); if(!Array.isArray(a)||a.length!==4) return null;
-    return a.map(x=>({playerId:String((x&&x.playerId)||""),name:String((x&&x.name)||""),invitedAt:String((x&&x.invitedAt)||""),reminded:!!(x&&x.reminded),email:String((x&&x.email)||"")})); } catch(e) { return null; }
+    return a.map(x=>({playerId:String((x&&x.playerId)||""),name:String((x&&x.name)||""),invitedAt:String((x&&x.invitedAt)||""),reminded:!!(x&&x.reminded),email:String((x&&x.email)||""),token:String((x&&x.token)||"")})); } catch(e) { return null; }
 }
 /** Four slots: pair 1 right/left, pair 2 right/left. Members of the community are matched by playerId; free text names are guests. */
 function buildLineup_(raw,owner,ownerProfile,mustKeep,prev) {
@@ -325,16 +328,16 @@ function buildLineup_(raw,owner,ownerProfile,mustKeep,prev) {
     if(email) { if(owner.email&&email===String(owner.email).toLowerCase()) throw new Error("Questa è la tua email: il tuo posto c'è già."); if(seenEmail[email]) throw new Error("La stessa email è in due posti."); seenEmail[email]=1; if(!name) name="Invitato via email"; }
     if(pid) { if(seen[pid]) throw new Error("Lo stesso giocatore è in due posti."); seen[pid]=1; name=players[pid]; }
     const old=pid&&prev?prev.find(x=>x.playerId===pid):null;
-    const slot={playerId:pid,name:name,invitedAt:"",reminded:false,email:email};
+    const slot={playerId:pid,name:name,invitedAt:"",reminded:false,email:email,token:""};
     if(pid&&pid!==owner.playerId) { if(old&&old.invitedAt) { slot.invitedAt=old.invitedAt; slot.reminded=!!old.reminded; } else { slot.invitedAt=new Date().toISOString(); newInvites.push(pid); } }
-    if(!pid&&email) { const oldE=prev?prev.find(x=>x.email===email):null; if(oldE&&oldE.invitedAt) { slot.invitedAt=oldE.invitedAt; slot.reminded=!!oldE.reminded; } else { slot.invitedAt=new Date().toISOString(); newEmailInvites.push(email); } }
+    if(!pid&&email) { const oldE=prev?prev.find(x=>x.email===email):null; if(oldE&&oldE.invitedAt) { slot.invitedAt=oldE.invitedAt; slot.reminded=!!oldE.reminded; slot.token=oldE.token||Utilities.getUuid(); } else { slot.invitedAt=new Date().toISOString(); slot.token=Utilities.getUuid(); newEmailInvites.push({email:email,token:slot.token}); } }
     out.push(slot);
   }
   if(!seen[owner.playerId]) {
     const own=ownerProfile?String(ownerProfile.displayName||""):(players[owner.playerId]||"");
     const free=out.findIndex(x=>!x.playerId&&!x.name);
     if(free<0) throw new Error("Chi organizza deve occupare uno dei 4 posti.");
-    out[free]={playerId:owner.playerId,name:own,invitedAt:"",reminded:false,email:""};
+    out[free]={playerId:owner.playerId,name:own,invitedAt:"",reminded:false,email:"",token:""};
   }
   (mustKeep||[]).forEach(function(id){ if(!seen[id]&&id!==owner.playerId) throw new Error("Non puoi togliere dalla formazione chi è già iscritto: deve annullare lui."); });
   out.newInvites=newInvites; out.newEmailInvites=newEmailInvites;
@@ -433,7 +436,7 @@ function verifyUser_(idToken) {
   const exp=Number(token.exp||0); if(exp*1000<Date.now()) throw new Error("Sessione Google scaduta. Accedi di nuovo.");
   const email=String(token.email).toLowerCase();
   const allowedEmails=(props.getProperty("ALLOWED_EMAILS")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
-  if(allowedEmails.length && allowedEmails.indexOf(email)<0 && !hasEmailInvite_(email)) throw new Error("Questo account non è ancora abilitato alla community. Chiedi a chi ti ha invitato o all'amministratore di aggiungere il tuo indirizzo.");
+  if(allowedEmails.length && allowedEmails.indexOf(email)<0 && !isApprovedEmail_(email) && !hasEmailInvite_(email) && !hasTokenInvite_()) throw new Error("Questo account non è ancora abilitato alla community. Chiedi a chi ti ha invitato o all'amministratore di aggiungere il tuo indirizzo.");
   const adminEmails=(props.getProperty("ADMIN_EMAILS")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
   return {email:email,playerId:"google:"+token.sub,isAdmin:adminEmails.indexOf(email)>=0,picture:String(token.picture||"")};
 }
@@ -446,6 +449,28 @@ function requireProfile_(user) {
   const p=readRows_("Players").find(r=>String(r.playerId)===user.playerId&&truthy_(r.active)&&String(r.displayName||"").trim());
   if(!p) throw new Error("Prima di iscriverti o proporre una partita salva il tuo profilo (nome, livello e lato).");
   return p;
+}
+function isApprovedEmail_(email) {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty("INVITED_EMAILS")||"[]").indexOf(email)>=0; } catch(e) { return false; }
+}
+/** Remembers an address that joined through an invitation, so it keeps access when ALLOWED_EMAILS is set. */
+function approveEmail_(email) {
+  try {
+    const props=PropertiesService.getScriptProperties();
+    const list=JSON.parse(props.getProperty("INVITED_EMAILS")||"[]");
+    if(list.indexOf(email)<0) { list.push(email); props.setProperty("INVITED_EMAILS",JSON.stringify(list.slice(-300))); }
+  } catch(e) { console.log("INVITED_EMAILS non aggiornata: "+e); }
+}
+function hasTokenInvite_() {
+  if(!CURRENT_INVITE_TOKEN) return false;
+  try {
+    const now=Date.now();
+    return readRows_("Matches").some(function(m){
+      if(String(m.status)==="cancelled"||String(m.status)==="completed") return false;
+      const t=new Date(m.dateTime).getTime(); if(!isNaN(t)&&t<now) return false;
+      const lu=parseLineup_(m.lineup); return !!lu&&lu.some(x=>x.token&&x.token===CURRENT_INVITE_TOKEN);
+    });
+  } catch(e) { return false; }
 }
 /** True if someone invited this address to an upcoming match: an invitation counts as admission even when ALLOWED_EMAILS is set. */
 function hasEmailInvite_(email) {
