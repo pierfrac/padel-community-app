@@ -23,6 +23,7 @@ for (const required of [
   "function setPartner(idToken,input)",
   "function setLineup(idToken,input)",
   "function processInvites()",
+  "function resetAllData(idToken,input)",
   "function installTriggers()"
 ]) assert.ok(gs.includes(required), "Missing backend function: " + required);
 

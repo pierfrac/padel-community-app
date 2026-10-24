@@ -16,8 +16,8 @@ function doGet() {
   return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
 }
 
-const BACKEND_VERSION = "2026-10-24.4";
-const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup"];
+const BACKEND_VERSION = "2026-10-24.5";
+const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 function doPost(e) {
@@ -314,6 +314,31 @@ function buildLineup_(raw,owner,ownerProfile,mustKeep,prev) {
   (mustKeep||[]).forEach(function(id){ if(!seen[id]&&id!==owner.playerId) throw new Error("Non puoi togliere dalla formazione chi è già iscritto: deve annullare lui."); });
   out.newInvites=newInvites;
   return out;
+}
+
+/** Admin only (ADMIN_EMAILS): deletes all matches and registrations, optionally the player profiles too. Needs the confirmation word. */
+function resetAllData(idToken,input) {
+  const user=verifyUser_(idToken); input=input||{};
+  if(!user.isAdmin) throw new Error("Solo l'amministratore può cancellare i dati.");
+  if(String(input.confirm||"").trim().toUpperCase()!=="CANCELLA") throw new Error("Per confermare scrivi CANCELLA.");
+  const lock=LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const calendarId=PropertiesService.getScriptProperties().getProperty("CALENDAR_ID");
+    let events=0;
+    if(calendarId) {
+      try {
+        const cal=CalendarApp.getCalendarById(calendarId);
+        if(cal) readRows_("Matches").forEach(function(m){ const id=String(m.calendarEventId||""); if(id) { try { const ev=cal.getEventById(id); if(ev) { ev.deleteEvent(); events++; } } catch(e) {} } });
+      } catch(e) {}
+    }
+    const names=["Matches","Registrations"].concat(input.includeProfiles===true?["Players"]:[]);
+    const counts={};
+    names.forEach(function(name){ const sh=sheet_(name), n=Math.max(0,sh.getLastRow()-1); if(n>0) sh.deleteRows(2,n); counts[name]=n; });
+    return {message:"Dati cancellati: "+counts.Matches+" partite, "+counts.Registrations+" iscrizioni"+(input.includeProfiles===true?", "+counts.Players+" profili":"")+(events?", "+events+" eventi del calendario":"")+".",counts:counts};
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function setPartner(idToken,input) {

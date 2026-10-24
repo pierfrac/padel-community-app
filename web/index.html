@@ -38,6 +38,7 @@ dialog.info{border:0;border-radius:18px;max-width:min(520px,calc(100% - 28px));p
 .brand{display:flex;align-items:center;gap:10px}.brand img{border-radius:9px}
 
 /* ===== Cosmic theme ===== */
+.adminbox{background:#fff;border-radius:18px;padding:14px 16px;margin-top:14px;border:2px dashed #c0392b55}.adminbox[hidden]{display:none}.adminbox p{margin:2px 0}
 #clubHint button{display:block;margin:6px 0 0;text-align:left;font-weight:700}
 .clubwrap{position:relative}.clubsugg{left:0;right:0;top:100%;margin-top:4px}.sharebox{scroll-margin-bottom:96px}.sharehead{display:block;font-size:16px;margin-bottom:6px;color:#2a1a9a}
 #matches{color:var(--ink);font-size:16px}
@@ -86,6 +87,7 @@ dialog.info{border-radius:22px}dialog.info::backdrop{background:rgba(8,4,40,.65)
 </section>
 <div class="rowbuttons"><button class="secondary" id="refresh">Aggiorna dati</button><button class="secondary" id="privateDrive">Attiva / aggiorna Drive privato</button><button class="danger" id="signOut">Esci</button></div>
 <div id="driveStatus" class="status">I feedback non vengono trasferiti al foglio condiviso.</div>
+<div id="adminBox" class="adminbox" hidden><strong>🛠 Strumenti amministratore</strong><p class="muted small">Visibili solo a te.</p><button id="resetOpen" class="danger" type="button">Cancella tutti i dati di prova</button></div>
 </div>
 <div id="tab-create" class="tabpane" hidden>
 <section class="panel"><h2>Proponi una partita</h2><form id="matchForm"><div class="grid">
@@ -112,6 +114,12 @@ dialog.info{border-radius:22px}dialog.info::backdrop{background:rgba(8,4,40,.65)
 </div>
 <footer class="muted small" style="padding:18px 4px">MVP in prova. Per usare la community servono il deployment Apps Script e la configurazione OAuth del proprietario. Le iscrizioni sono limitate a quattro persone per partita.<br><button class="secondary" id="howTo" type="button">Come funziona</button><br><span id="versions">Versioni: caricamento…</span></footer>
 </main>
+<dialog id="resetDlg" class="info" aria-labelledby="rdTitle"><h3 id="rdTitle">⚠️ Cancella tutti i dati di prova</h3>
+<p>Verranno eliminate <b>tutte le partite e le iscrizioni</b> (e gli eventi nel calendario condiviso, se configurato). <b>Non si può annullare.</b></p>
+<label class="check"><input type="checkbox" id="resetProfiles"> Cancella anche i profili dei giocatori</label>
+<p class="muted small">I feedback privati restano nel Drive di ciascuno.</p>
+<label for="resetConfirm">Scrivi CANCELLA per confermare</label><input id="resetConfirm" autocomplete="off" placeholder="CANCELLA">
+<div class="rowbuttons"><button id="resetCancel" class="secondary" type="button">Annulla</button><button id="resetGo" class="danger" type="button">Cancella tutto</button></div><div id="resetMsg" class="msg" role="status"></div></dialog>
 <dialog id="manageInfo" class="info" aria-labelledby="miTitle"><h3 id="miTitle">Inviti, cancellazione e gestione</h3>
 <p><b>📩 Inviti</b><br>Chi inviti dalla community riceve un'email e un posto riservato. Se non risponde entro 24 ore: con la partita a più di 4 giorni gli arriva un promemoria; con la partita entro 4 giorni l'invito viene annullato, il posto torna libero e tu ricevi un avviso via email.</p>
 <p><b>✏️ Gestione</b><br>Dalla scheda della partita puoi usare “Modifica formazione” (cambia i posti, ma non chi è già iscritto), “Segna conclusa” (dopo l'orario di fine) e “Annulla partita”.</p>
@@ -138,7 +146,7 @@ function initGoogle(){if(!GOOGLE_CLIENT_ID){setMessage("authMessage","Configuraz
  google.accounts.id.initialize({client_id:GOOGLE_CLIENT_ID,callback:async response=>{idToken=response.credential;try{const p=JSON.parse(atob(idToken.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));user={email:p.email,sub:p.sub};googleName=String(p.name||p.given_name||"").slice(0,80);setMessage("authMessage","Accesso effettuato: "+user.email);$("app").style.display="block";await refreshData();maybeStartTour();}catch(e){setMessage("authMessage","Impossibile leggere il profilo Google.");}}});
  google.accounts.id.renderButton($("googleButton"),{theme:"outline",size:"large",shape:"pill",text:"signin_with",locale:"it"});
  };start();}
-function refreshData(){server("getAppData",null,d=>{data=d;user=d.user;const me=d.me;enterApp();if(!tabInit){tabInit=true;showTab((focusMatch||me)?"matches":"profile");}if(me){$("name").value=me.displayName||"";$("level").value=me.skillLevel||"";$("side").value=me.preferredSide||"indifferent";$("showPhoto").checked=!!me.photoUrl;}else{if(!$("name").value&&googleName)$("name").value=googleName;setMessage("profileMsg","Benvenuto! Controlla il nome, scegli livello e lato e premi “Salva profilo”: ti serve per iscriverti alle partite.");}render();},e=>setMessage("matchesMsg",e.message||"Errore di caricamento"));}
+function refreshData(){server("getAppData",null,d=>{data=d;user=d.user;const me=d.me;enterApp();$("adminBox").hidden=!(d.user&&d.user.isAdmin);if(!tabInit){tabInit=true;showTab((focusMatch||me)?"matches":"profile");}if(me){$("name").value=me.displayName||"";$("level").value=me.skillLevel||"";$("side").value=me.preferredSide||"indifferent";$("showPhoto").checked=!!me.photoUrl;}else{if(!$("name").value&&googleName)$("name").value=googleName;setMessage("profileMsg","Benvenuto! Controlla il nome, scegli livello e lato e premi “Salva profilo”: ti serve per iscriverti alle partite.");}render();},e=>setMessage("matchesMsg",e.message||"Errore di caricamento"));}
 let focusMatch=new URLSearchParams(location.search).get("match")||"";
 function shareUrl(m){const u=new URL(location.href);u.search="";u.hash="";u.searchParams.set("match",m.matchId);u.searchParams.set("v",m.venue);u.searchParams.set("d",m.dateTime);return u.toString();}
 function shareText(m,url){const d=new Date(m.dateTime);return "🎾 Sei invitato a una partita di padel!\n"+m.venue+" · "+(isNaN(d.getTime())?"data da definire":d.toLocaleString("it-IT"))+"\nOccupa il tuo posto (ce ne sono 4): "+url;}
@@ -311,6 +319,9 @@ function matchCard(m){
  if(pendingShare&&m.matchId===pendingShare){pendingShare="";item.open=true;toggleShare(m,item,{headline:"🎉 Partita creata! Invita gli altri giocatori:"});setTimeout(()=>{const sb=item.querySelector(".sharebox");if(sb)sb.scrollIntoView({behavior:"smooth",block:"center"});},120);}
  if(focusMatch&&m.matchId===focusMatch){item.classList.add("focus");item.open=true;if(!$("invite").hidden)$("inviteBody").textContent="La partita è qui sotto, evidenziata: premi “Mi iscrivo” per prenotare il tuo posto.";setTimeout(()=>item.scrollIntoView({block:"center"}),50);focusMatch="";}
  return item;}
+$("resetOpen").onclick=()=>{$("resetConfirm").value="";$("resetProfiles").checked=false;setMessage("resetMsg","");$("resetDlg").showModal();};
+$("resetCancel").onclick=()=>$("resetDlg").close();
+$("resetGo").onclick=()=>{setMessage("resetMsg","");server("resetAllData",{confirm:$("resetConfirm").value,includeProfiles:$("resetProfiles").checked},r=>{$("resetDlg").close();setMessage("driveStatus",r.message);setMessage("matchesMsg",r.message);refreshData();},e=>setMessage("resetMsg",e.message||"Errore"));};
 function manageInfoSeen(){try{return localStorage.getItem("padelManageInfoSeen")==="1";}catch(e){return false;}}
 function showManageInfo(){const d=$("manageInfo");if(!d.open)d.showModal();}
 $("manageInfoClose").onclick=()=>{$("manageInfo").close();try{localStorage.setItem("padelManageInfoSeen","1");}catch(e){}};
