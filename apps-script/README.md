@@ -75,3 +75,9 @@ Limiti e condizioni:
 - Matches: partite proposte e ID evento Calendar opzionale.
 - Registrations: iscrizioni alle partite.
 - Feedback: file JSON separato nel Drive di ciascun utente, non una scheda condivisa.
+## Inviti via email e promemoria
+- Chi viene invitato a una partita (giocatore della community messo in un posto) riceve una email con il link per accettare. Le email partono dall'account che possiede lo script.
+- Dopo 24 ore senza risposta: se la partita è a più di 4 giorni parte un promemoria; se è entro 4 giorni l'invito viene annullato, il posto si libera e l'organizzatore riceve un avviso.
+- Il controllo gira ogni ora con un trigger. Va attivato una volta: nell'editor esegui `installTriggers` e accetta i nuovi permessi (invio email e trigger), poi ripubblica con "Nuova versione".
+- Proprietà script opzionale `APP_URL`: indirizzo del sito usato nei link delle email (di default quello su GitHub Pages).
+- Limite: un account Gmail personale può inviare circa 100 email al giorno con Apps Script.

@@ -16,7 +16,7 @@ function doGet() {
   return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
 }
 
-const BACKEND_VERSION = "2026-10-24.1";
+const BACKEND_VERSION = "2026-10-24.2";
 const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
@@ -104,7 +104,7 @@ function createMatch(idToken,input) {
   const venue=clean_(input.venue,120), dateText=clean_(input.dateTime,80), notes=clean_(input.notes,500);
   if(!venue||!dateText) throw new Error("Inserisci campo e data/ora.");
   const date=new Date(dateText); if(isNaN(date.getTime())||date.getTime()<Date.now()-60000) throw new Error("Scegli una data futura valida.");
-  const lineup=buildLineup_(input.lineup,user,profile,null);
+  const lineup=buildLineup_(input.lineup,user,profile,null,null);
   const id=Utilities.getUuid(), created=new Date();
   let eventId="";
   const calendarId=PropertiesService.getScriptProperties().getProperty("CALENDAR_ID");
@@ -118,6 +118,7 @@ function createMatch(idToken,input) {
   }
   sheet_("Matches").appendRow([id,date,venue,user.playerId,"open",notes,created,eventId,JSON.stringify(lineup)]);
   sheet_("Registrations").appendRow([Utilities.getUuid(),id,user.playerId,"joined",created,""]);
+  sendInvites_({matchId:id,venue:venue,date:date},profile.displayName,lineup.newInvites);
   return {matchId:id,message:calendarId?"Partita creata e aggiunta al calendario.":"Partita creata. Calendar non è ancora configurato."};
 }
 
@@ -139,7 +140,7 @@ function registerForMatch(idToken,input) {
     let slot=-1;
     if(lineup) {
       slot=lineup.findIndex(x=>x.playerId===user.playerId);
-      if(slot<0) { slot=lineup.findIndex(x=>!x.playerId&&!x.name); if(slot<0) throw new Error("La partita è già completa."); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||"")}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); }
+      if(slot<0) { slot=lineup.findIndex(x=>!x.playerId&&!x.name); if(slot<0) throw new Error("La partita è già completa."); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); }
     } else if(active.length>=4) throw new Error("La partita è già completa.");
     sheet_("Registrations").appendRow([Utilities.getUuid(),matchId,user.playerId,"joined",new Date(),""]);
     return {message:"Iscrizione registrata."};
@@ -157,7 +158,7 @@ function cancelRegistration(idToken,input) {
   sh.getRange(row._row,6).setValue("");
   regs.filter(r=>String(r.matchId)===matchId&&String(r.partnerId||"")===user.playerId).forEach(r=>sh.getRange(r._row,6).setValue(""));
   const mrow=readRows_("Matches").find(r=>String(r.matchId)===matchId), lu=mrow&&parseLineup_(mrow.lineup);
-  if(lu) { const i=lu.findIndex(x=>x.playerId===user.playerId); if(i>=0) { lu[i]={playerId:"",name:""}; sheet_("Matches").getRange(mrow._row,9).setValue(JSON.stringify(lu)); } }
+  if(lu) { const i=lu.findIndex(x=>x.playerId===user.playerId); if(i>=0) { lu[i]={playerId:"",name:"",invitedAt:"",reminded:false}; sheet_("Matches").getRange(mrow._row,9).setValue(JSON.stringify(lu)); } }
   return {message:"Iscrizione annullata."};
 }
 
@@ -172,37 +173,121 @@ function setLineup(idToken,input) {
     if(!user.isAdmin&&String(row.createdBy)!==user.playerId) throw new Error("Solo chi ha proposto la partita può cambiare la formazione.");
     if(String(row.status)==="completed") throw new Error("La partita è già conclusa.");
     const joined=readRows_("Registrations").filter(r=>String(r.matchId)===matchId&&String(r.status)==="joined").map(r=>String(r.playerId));
-    const lineup=buildLineup_(input.lineup,{playerId:String(row.createdBy)},null,joined);
+    const lineup=buildLineup_(input.lineup,{playerId:String(row.createdBy)},null,joined,parseLineup_(row.lineup));
     sheet_("Matches").getRange(row._row,9).setValue(JSON.stringify(lineup));
+    const ownerRow=readRows_("Players").find(r=>String(r.playerId)===String(row.createdBy));
+    sendInvites_({matchId:String(row.matchId),venue:String(row.venue),date:new Date(row.dateTime)},ownerRow?String(ownerRow.displayName):"L'organizzatore",lineup.newInvites.filter(id=>joined.indexOf(id)<0));
     return {message:"Formazione aggiornata."};
   } finally {
     lock.releaseLock();
   }
 }
 
+const DEFAULT_APP_URL = "https://pierfrac.github.io/padel-community-app/";
+const INVITE_REMINDER_AFTER_MS = 24*60*60*1000;
+const REMINDER_MIN_DAYS_LEFT = 4;
+
+function esc_(t) { return String(t==null?"":t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function appLink_(m) {
+  const base=PropertiesService.getScriptProperties().getProperty("APP_URL")||DEFAULT_APP_URL;
+  return base+"?match="+encodeURIComponent(m.matchId)+"&v="+encodeURIComponent(m.venue)+"&d="+encodeURIComponent(new Date(m.date).toISOString());
+}
+function whenText_(d) { return Utilities.formatDate(new Date(d),Session.getScriptTimeZone(),"dd/MM/yyyy 'alle' HH:mm"); }
+function mail_(to,subject,html) {
+  try { if(!to) return; MailApp.sendEmail({to:String(to),subject:subject,htmlBody:html,name:"Padel Community"}); }
+  catch(err) { console.log("Email non inviata a "+to+": "+err); }
+}
+function playerMap_() {
+  const map={}; readRows_("Players").forEach(r=>{ map[String(r.playerId)]={name:String(r.displayName||""),email:String(r.email||"")}; }); return map;
+}
+function sendInvites_(match,organizerName,playerIds) {
+  if(!playerIds||!playerIds.length) return;
+  try { sendInvitesUnsafe_(match,organizerName,playerIds); }
+  catch(err) { console.log("Inviti non inviati: "+err); }
+}
+function sendInvitesUnsafe_(match,organizerName,playerIds) {
+  const pm=playerMap_();
+  playerIds.forEach(function(id){
+    const p=pm[id]; if(!p||!p.email) return;
+    mail_(p.email,"🎾 "+organizerName+" ti ha invitato a una partita di padel",
+      "<p>Ciao "+esc_(p.name)+",</p><p><b>"+esc_(organizerName)+"</b> ti ha invitato a una partita di padel:</p>"+
+      "<p><b>"+esc_(match.venue)+"</b><br>"+esc_(whenText_(match.date))+"</p>"+
+      "<p>Ti abbiamo riservato un posto. <a href=\""+esc_(appLink_(match))+"\">Apri la partita e premi “Accetta invito”</a>.</p>"+
+      "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore: se la partita è tra più di "+REMINDER_MIN_DAYS_LEFT+" giorni ti mandiamo un promemoria, altrimenti il posto viene liberato e l'organizzatore viene avvisato.</p>");
+  });
+}
+
+/** Run hourly (see installTriggers): after 24h without an answer, remind (match more than 4 days away) or release the seat and tell the organizer. */
+function processInvites() {
+  const lock=LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const now=Date.now(), DAY=24*60*60*1000, pm=playerMap_(), joined={};
+    readRows_("Registrations").filter(r=>String(r.status)==="joined").forEach(r=>{ joined[String(r.matchId)+"|"+String(r.playerId)]=1; });
+    const msh=sheet_("Matches");
+    readRows_("Matches").forEach(function(m){
+      const status=String(m.status); if(status==="cancelled"||status==="completed") return;
+      const lineup=parseLineup_(m.lineup); if(!lineup) return;
+      const start=new Date(m.dateTime).getTime(); if(isNaN(start)||start<now) return;
+      const matchId=String(m.matchId), info={matchId:matchId,venue:String(m.venue),date:new Date(m.dateTime)};
+      let changed=false;
+      lineup.forEach(function(s,i){
+        if(!s.playerId||s.playerId===String(m.createdBy)||joined[matchId+"|"+s.playerId]||!s.invitedAt||s.reminded) return;
+        const age=now-new Date(s.invitedAt).getTime(); if(isNaN(age)||age<INVITE_REMINDER_AFTER_MS) return;
+        const invitee=pm[s.playerId]||{name:s.name,email:""}, org=pm[String(m.createdBy)]||{name:"",email:""};
+        if((start-now)/DAY>REMINDER_MIN_DAYS_LEFT) {
+          s.reminded=true; changed=true;
+          mail_(invitee.email,"⏰ Promemoria: hai un invito a una partita di padel",
+            "<p>Ciao "+esc_(invitee.name)+",</p><p>hai ancora un posto riservato per la partita di <b>"+esc_(info.venue)+"</b>, "+esc_(whenText_(info.date))+".</p><p><a href=\""+esc_(appLink_(info))+"\">Apri la partita e premi “Accetta invito”</a>.</p>");
+        } else {
+          lineup[i]={playerId:"",name:"",invitedAt:"",reminded:false}; changed=true;
+          mail_(org.email,"Invito scaduto: "+invitee.name+" non ha risposto",
+            "<p>Ciao "+esc_(org.name)+",</p><p><b>"+esc_(invitee.name)+"</b> non ha risposto all'invito per la partita di <b>"+esc_(info.venue)+"</b>, "+esc_(whenText_(info.date))+". La partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, quindi l'invito è stato annullato e il posto è di nuovo libero.</p><p><a href=\""+esc_(appLink_(info))+"\">Apri la partita</a> per invitare qualcun altro.</p>");
+          mail_(invitee.email,"Invito annullato: partita di padel del "+whenText_(info.date),
+            "<p>Ciao "+esc_(invitee.name)+",</p><p>l'invito alla partita di <b>"+esc_(info.venue)+"</b> è stato annullato perché non hai risposto in tempo. Se vuoi ancora giocare, <a href=\""+esc_(appLink_(info))+"\">controlla se c'è un posto libero</a>.</p>");
+        }
+      });
+      if(changed) msh.getRange(m._row,9).setValue(JSON.stringify(lineup));
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Run once from the editor: creates the hourly trigger and asks for the mail/trigger permissions. */
+function installTriggers() {
+  ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()==="processInvites").forEach(t=>ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger("processInvites").timeBased().everyHours(1).create();
+  return "Controllo inviti attivato: ogni ora.";
+}
+
 function parseLineup_(v) {
   if(!v) return null;
   try { const a=JSON.parse(String(v)); if(!Array.isArray(a)||a.length!==4) return null;
-    return a.map(x=>({playerId:String((x&&x.playerId)||""),name:String((x&&x.name)||"")})); } catch(e) { return null; }
+    return a.map(x=>({playerId:String((x&&x.playerId)||""),name:String((x&&x.name)||""),invitedAt:String((x&&x.invitedAt)||""),reminded:!!(x&&x.reminded)})); } catch(e) { return null; }
 }
 /** Four slots: pair 1 right/left, pair 2 right/left. Members of the community are matched by playerId; free text names are guests. */
-function buildLineup_(raw,owner,ownerProfile,mustKeep) {
+function buildLineup_(raw,owner,ownerProfile,mustKeep,prev) {
   const arr=Array.isArray(raw)?raw.slice(0,4):[];
   const players={}; readRows_("Players").filter(r=>r.playerId&&truthy_(r.active)).forEach(r=>players[String(r.playerId)]=String(r.displayName||""));
-  const seen={}, out=[];
+  const seen={}, out=[], newInvites=[];
   for(let i=0;i<4;i++) {
     const e=arr[i]||{}; let pid=clean_(e.playerId,80), name=clean_(e.name,60);
     if(pid&&!players.hasOwnProperty(pid)) pid="";
     if(pid) { if(seen[pid]) throw new Error("Lo stesso giocatore è in due posti."); seen[pid]=1; name=players[pid]; }
-    out.push({playerId:pid,name:name});
+    const old=pid&&prev?prev.find(x=>x.playerId===pid):null;
+    const slot={playerId:pid,name:name,invitedAt:"",reminded:false};
+    if(pid&&pid!==owner.playerId) { if(old&&old.invitedAt) { slot.invitedAt=old.invitedAt; slot.reminded=!!old.reminded; } else { slot.invitedAt=new Date().toISOString(); newInvites.push(pid); } }
+    out.push(slot);
   }
   if(!seen[owner.playerId]) {
     const own=ownerProfile?String(ownerProfile.displayName||""):(players[owner.playerId]||"");
     const free=out.findIndex(x=>!x.playerId&&!x.name);
     if(free<0) throw new Error("Chi organizza deve occupare uno dei 4 posti.");
-    out[free]={playerId:owner.playerId,name:own};
+    out[free]={playerId:owner.playerId,name:own,invitedAt:"",reminded:false};
   }
   (mustKeep||[]).forEach(function(id){ if(!seen[id]&&id!==owner.playerId) throw new Error("Non puoi togliere dalla formazione chi è già iscritto: deve annullare lui."); });
+  out.newInvites=newInvites;
   return out;
 }
 
