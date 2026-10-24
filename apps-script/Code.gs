@@ -5,7 +5,7 @@
  */
 const HEADERS = {
   Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt","photoUrl"],
-  Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId"],
+  Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId","lineup"],
   Registrations: ["registrationId","matchId","playerId","status","createdAt","partnerId"],
   FeedbackPrivate: ["DO_NOT_USE"]
 };
@@ -16,8 +16,8 @@ function doGet() {
   return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
 }
 
-const BACKEND_VERSION = "2026-10-23.5";
-const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner"];
+const BACKEND_VERSION = "2026-10-24.1";
+const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 function doPost(e) {
@@ -72,11 +72,11 @@ function getAppData(idToken) {
     return {registrationId:String(r.registrationId),matchId:String(r.matchId),playerId:String(r.playerId),status:String(r.status),partnerId:String(r.partnerId || "")};
   });
   const matches = readRows_("Matches").filter(r => r.matchId && String(r.status) !== "cancelled").map(function(r) {
-    return {matchId:String(r.matchId),dateTime:iso_(r.dateTime),venue:String(r.venue || ""),status:String(r.status || "open"),notes:String(r.notes || ""),createdBy:String(r.createdBy || ""),registeredCount:0};
+    return {matchId:String(r.matchId),dateTime:iso_(r.dateTime),venue:String(r.venue || ""),status:String(r.status || "open"),notes:String(r.notes || ""),createdBy:String(r.createdBy || ""),lineup:parseLineup_(r.lineup),registeredCount:0};
   });
   const counts = {};
   registrations.forEach(r => counts[r.matchId]=(counts[r.matchId]||0)+1);
-  matches.forEach(m => m.registeredCount=counts[m.matchId]||0);
+  matches.forEach(m => { m.registeredCount=counts[m.matchId]||0; m.seatsTaken=m.lineup?m.lineup.filter(x=>x.playerId||x.name).length:m.registeredCount; });
   const mine = players.find(p => p.playerId === user.playerId) || null;
   return {user:{email:user.email,playerId:user.playerId,isAdmin:user.isAdmin},me:mine,players:players,matches:matches,registrations:registrations};
 }
@@ -100,10 +100,11 @@ function saveProfile(idToken, input) {
 
 function createMatch(idToken,input) {
   const user=verifyUser_(idToken); input=input||{};
-  requireProfile_(user);
+  const profile=requireProfile_(user);
   const venue=clean_(input.venue,120), dateText=clean_(input.dateTime,80), notes=clean_(input.notes,500);
   if(!venue||!dateText) throw new Error("Inserisci campo e data/ora.");
   const date=new Date(dateText); if(isNaN(date.getTime())||date.getTime()<Date.now()-60000) throw new Error("Scegli una data futura valida.");
+  const lineup=buildLineup_(input.lineup,user,profile,null);
   const id=Utilities.getUuid(), created=new Date();
   let eventId="";
   const calendarId=PropertiesService.getScriptProperties().getProperty("CALENDAR_ID");
@@ -115,14 +116,14 @@ function createMatch(idToken,input) {
       eventId=event.getId();
     } catch(err) { throw new Error("Partita non salvata: errore Calendar. "+err.message); }
   }
-  sheet_("Matches").appendRow([id,date,venue,user.playerId,"open",notes,created,eventId]);
+  sheet_("Matches").appendRow([id,date,venue,user.playerId,"open",notes,created,eventId,JSON.stringify(lineup)]);
   sheet_("Registrations").appendRow([Utilities.getUuid(),id,user.playerId,"joined",created,""]);
   return {matchId:id,message:calendarId?"Partita creata e aggiunta al calendario.":"Partita creata. Calendar non è ancora configurato."};
 }
 
 function registerForMatch(idToken,input) {
   const user=verifyUser_(idToken); input=input||{};
-  requireProfile_(user);
+  const profile=requireProfile_(user);
   const matchId=clean_(input.matchId,80);
   const lock=LockService.getScriptLock();
   lock.waitLock(10000);
@@ -134,7 +135,12 @@ function registerForMatch(idToken,input) {
     const regs=readRows_("Registrations");
     if(regs.some(r=>String(r.matchId)===matchId&&String(r.playerId)===user.playerId&&String(r.status)==="joined")) throw new Error("Sei già iscritto a questa partita.");
     const active=regs.filter(r=>String(r.matchId)===matchId&&String(r.status)==="joined");
-    if(active.length>=4) throw new Error("La partita è già completa.");
+    const lineup=parseLineup_(match.lineup);
+    let slot=-1;
+    if(lineup) {
+      slot=lineup.findIndex(x=>x.playerId===user.playerId);
+      if(slot<0) { slot=lineup.findIndex(x=>!x.playerId&&!x.name); if(slot<0) throw new Error("La partita è già completa."); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||"")}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); }
+    } else if(active.length>=4) throw new Error("La partita è già completa.");
     sheet_("Registrations").appendRow([Utilities.getUuid(),matchId,user.playerId,"joined",new Date(),""]);
     return {message:"Iscrizione registrata."};
   } finally {
@@ -150,7 +156,54 @@ function cancelRegistration(idToken,input) {
   sh.getRange(row._row,4).setValue("cancelled");
   sh.getRange(row._row,6).setValue("");
   regs.filter(r=>String(r.matchId)===matchId&&String(r.partnerId||"")===user.playerId).forEach(r=>sh.getRange(r._row,6).setValue(""));
+  const mrow=readRows_("Matches").find(r=>String(r.matchId)===matchId), lu=mrow&&parseLineup_(mrow.lineup);
+  if(lu) { const i=lu.findIndex(x=>x.playerId===user.playerId); if(i>=0) { lu[i]={playerId:"",name:""}; sheet_("Matches").getRange(mrow._row,9).setValue(JSON.stringify(lu)); } }
   return {message:"Iscrizione annullata."};
+}
+
+function setLineup(idToken,input) {
+  const user=verifyUser_(idToken); input=input||{};
+  const matchId=clean_(input.matchId,80);
+  const lock=LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const row=readRows_("Matches").find(r=>String(r.matchId)===matchId);
+    if(!row||String(row.status)==="cancelled") throw new Error("Partita non trovata.");
+    if(!user.isAdmin&&String(row.createdBy)!==user.playerId) throw new Error("Solo chi ha proposto la partita può cambiare la formazione.");
+    if(String(row.status)==="completed") throw new Error("La partita è già conclusa.");
+    const joined=readRows_("Registrations").filter(r=>String(r.matchId)===matchId&&String(r.status)==="joined").map(r=>String(r.playerId));
+    const lineup=buildLineup_(input.lineup,{playerId:String(row.createdBy)},null,joined);
+    sheet_("Matches").getRange(row._row,9).setValue(JSON.stringify(lineup));
+    return {message:"Formazione aggiornata."};
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function parseLineup_(v) {
+  if(!v) return null;
+  try { const a=JSON.parse(String(v)); if(!Array.isArray(a)||a.length!==4) return null;
+    return a.map(x=>({playerId:String((x&&x.playerId)||""),name:String((x&&x.name)||"")})); } catch(e) { return null; }
+}
+/** Four slots: pair 1 right/left, pair 2 right/left. Members of the community are matched by playerId; free text names are guests. */
+function buildLineup_(raw,owner,ownerProfile,mustKeep) {
+  const arr=Array.isArray(raw)?raw.slice(0,4):[];
+  const players={}; readRows_("Players").filter(r=>r.playerId&&truthy_(r.active)).forEach(r=>players[String(r.playerId)]=String(r.displayName||""));
+  const seen={}, out=[];
+  for(let i=0;i<4;i++) {
+    const e=arr[i]||{}; let pid=clean_(e.playerId,80), name=clean_(e.name,60);
+    if(pid&&!players.hasOwnProperty(pid)) pid="";
+    if(pid) { if(seen[pid]) throw new Error("Lo stesso giocatore è in due posti."); seen[pid]=1; name=players[pid]; }
+    out.push({playerId:pid,name:name});
+  }
+  if(!seen[owner.playerId]) {
+    const own=ownerProfile?String(ownerProfile.displayName||""):(players[owner.playerId]||"");
+    const free=out.findIndex(x=>!x.playerId&&!x.name);
+    if(free<0) throw new Error("Chi organizza deve occupare uno dei 4 posti.");
+    out[free]={playerId:owner.playerId,name:own};
+  }
+  (mustKeep||[]).forEach(function(id){ if(!seen[id]&&id!==owner.playerId) throw new Error("Non puoi togliere dalla formazione chi è già iscritto: deve annullare lui."); });
+  return out;
 }
 
 function setPartner(idToken,input) {
@@ -232,6 +285,7 @@ function safePhoto_(url) {
 function requireProfile_(user) {
   const p=readRows_("Players").find(r=>String(r.playerId)===user.playerId&&truthy_(r.active)&&String(r.displayName||"").trim());
   if(!p) throw new Error("Prima di iscriverti o proporre una partita salva il tuo profilo (nome, livello e lato).");
+  return p;
 }
 function readRows_(name) {
   const sh=sheet_(name); if(sh.getLastRow()<2) return [];
