@@ -16,8 +16,8 @@ function doGet() {
   return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
 }
 
-const BACKEND_VERSION = "2026-10-24.6";
-const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData"];
+const BACKEND_VERSION = "2026-10-24.7";
+const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData","lookupEmail"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 function doPost(e) {
@@ -212,6 +212,7 @@ function sendEmailInvites_(match,organizerName,emails) {
         "<p>Ciao,</p><p><b>"+esc_(organizerName)+"</b> ti ha invitato a una partita di padel:</p>"+
         "<p><b>"+esc_(match.venue)+"</b><br>"+esc_(whenText_(match.date))+"</p>"+
         "<p>Ti abbiamo riservato un posto. Per prenderlo: <a href=\""+esc_(appLink_(match))+"\">apri la partita</a>, <b>accedi con Google usando questo indirizzo email ("+esc_(email)+")</b>, salva il tuo profilo (nome, livello e lato preferito) e premi “Accetta invito”.</p>"+
+        "<p style=\"color:#666;font-size:13px\">Non serve una Gmail: va bene qualsiasi indirizzo collegato a un account Google (anche di lavoro o scuola). Se il tuo non lo è ancora, puoi creare un account Google usando questo stesso indirizzo: <a href=\"https://accounts.google.com/signup\">accounts.google.com/signup</a> (scegli «Usa il mio indirizzo email attuale»).</p>"+
         "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore: se la partita è tra più di "+REMINDER_MIN_DAYS_LEFT+" giorni ti mandiamo un promemoria, altrimenti il posto viene liberato e l'organizzatore viene avvisato.</p>");
     });
   } catch(err) { console.log("Inviti email non inviati: "+err); }
@@ -314,12 +315,13 @@ function parseLineup_(v) {
 /** Four slots: pair 1 right/left, pair 2 right/left. Members of the community are matched by playerId; free text names are guests. */
 function buildLineup_(raw,owner,ownerProfile,mustKeep,prev) {
   const arr=Array.isArray(raw)?raw.slice(0,4):[];
-  const players={}; readRows_("Players").filter(r=>r.playerId&&truthy_(r.active)).forEach(r=>players[String(r.playerId)]=String(r.displayName||""));
+  const players={}, byEmail={}; readRows_("Players").filter(r=>r.playerId&&truthy_(r.active)).forEach(r=>{ players[String(r.playerId)]=String(r.displayName||""); const em=String(r.email||"").trim().toLowerCase(); if(em) byEmail[em]=String(r.playerId); });
   const seen={}, seenEmail={}, out=[], newInvites=[], newEmailInvites=[];
   for(let i=0;i<4;i++) {
     const e=arr[i]||{}; let pid=clean_(e.playerId,80), name=clean_(e.name,60), email=String(e.email||"").trim().toLowerCase().slice(0,120);
     if(pid&&!players.hasOwnProperty(pid)) pid="";
     if(!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)||pid) email="";
+    if(email&&byEmail[email]) { if(byEmail[email]===owner.playerId) throw new Error("Questa è la tua email: il tuo posto c'è già."); pid=byEmail[email]; email=""; }
     if(email) { if(owner.email&&email===String(owner.email).toLowerCase()) throw new Error("Questa è la tua email: il tuo posto c'è già."); if(seenEmail[email]) throw new Error("La stessa email è in due posti."); seenEmail[email]=1; if(!name) name="Invitato via email"; }
     if(pid) { if(seen[pid]) throw new Error("Lo stesso giocatore è in due posti."); seen[pid]=1; name=players[pid]; }
     const old=pid&&prev?prev.find(x=>x.playerId===pid):null;
@@ -431,7 +433,7 @@ function verifyUser_(idToken) {
   const exp=Number(token.exp||0); if(exp*1000<Date.now()) throw new Error("Sessione Google scaduta. Accedi di nuovo.");
   const email=String(token.email).toLowerCase();
   const allowedEmails=(props.getProperty("ALLOWED_EMAILS")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
-  if(allowedEmails.length && allowedEmails.indexOf(email)<0) throw new Error("Questo account non è ancora abilitato alla community. Chiedi all'amministratore di aggiungere la tua Gmail.");
+  if(allowedEmails.length && allowedEmails.indexOf(email)<0 && !hasEmailInvite_(email)) throw new Error("Questo account non è ancora abilitato alla community. Chiedi a chi ti ha invitato o all'amministratore di aggiungere il tuo indirizzo.");
   const adminEmails=(props.getProperty("ADMIN_EMAILS")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
   return {email:email,playerId:"google:"+token.sub,isAdmin:adminEmails.indexOf(email)>=0,picture:String(token.picture||"")};
 }
@@ -444,6 +446,26 @@ function requireProfile_(user) {
   const p=readRows_("Players").find(r=>String(r.playerId)===user.playerId&&truthy_(r.active)&&String(r.displayName||"").trim());
   if(!p) throw new Error("Prima di iscriverti o proporre una partita salva il tuo profilo (nome, livello e lato).");
   return p;
+}
+/** True if someone invited this address to an upcoming match: an invitation counts as admission even when ALLOWED_EMAILS is set. */
+function hasEmailInvite_(email) {
+  try {
+    const now=Date.now();
+    return readRows_("Matches").some(function(m){
+      if(String(m.status)==="cancelled"||String(m.status)==="completed") return false;
+      const t=new Date(m.dateTime).getTime(); if(!isNaN(t)&&t<now) return false;
+      const lu=parseLineup_(m.lineup); return !!lu&&lu.some(x=>x.email&&x.email===email);
+    });
+  } catch(e) { return false; }
+}
+/** Tells the lineup editor whether an address already belongs to a registered player (so the box can turn into that person). */
+function lookupEmail(idToken,input) {
+  const user=verifyUser_(idToken);
+  const email=String((input&&input.email)||"").trim().toLowerCase();
+  if(!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) throw new Error("Email non valida.");
+  if(email===user.email) return {found:false,self:true};
+  const p=readRows_("Players").find(r=>r.playerId&&truthy_(r.active)&&String(r.email||"").trim().toLowerCase()===email);
+  return p?{found:true,playerId:String(p.playerId),displayName:String(p.displayName||"")}:{found:false};
 }
 function readRows_(name) {
   const sh=sheet_(name); if(sh.getLastRow()<2) return [];

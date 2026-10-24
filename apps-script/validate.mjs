@@ -24,6 +24,7 @@ for (const required of [
   "function setLineup(idToken,input)",
   "function processInvites()",
   "function resetAllData(idToken,input)",
+  "function lookupEmail(idToken,input)",
   "function installTriggers()"
 ]) assert.ok(gs.includes(required), "Missing backend function: " + required);
 
