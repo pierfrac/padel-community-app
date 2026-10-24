@@ -11,12 +11,11 @@ const HEADERS = {
 };
 
 function doGet() {
-  const t = HtmlService.createTemplateFromFile("Index");
-  t.googleClientId = PropertiesService.getScriptProperties().getProperty("GOOGLE_CLIENT_ID") || "";
-  return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
+  // Opening the /exec address in a browser shows which backend version is published.
+  return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-24.8";
+const BACKEND_VERSION = "2026-10-24.9";
 const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData","lookupEmail"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
