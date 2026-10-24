@@ -38,6 +38,7 @@ dialog.info{border:0;border-radius:18px;max-width:min(520px,calc(100% - 28px));p
 .brand{display:flex;align-items:center;gap:10px}.brand img{border-radius:9px}
 
 /* ===== Cosmic theme ===== */
+.fbitem{padding:6px 0;border-top:1px dashed var(--line)}.fbitem p{margin:2px 0 0;font-style:italic}
 .adminbox{background:#fff;border-radius:18px;padding:14px 16px;margin-top:14px;border:2px dashed #c0392b55}.adminbox[hidden]{display:none}.adminbox p{margin:2px 0}
 #clubHint button{display:block;margin:6px 0 0;text-align:left;font-weight:700}
 .clubwrap{position:relative}.clubsugg{left:0;right:0;top:100%;margin-top:4px}.sharebox{scroll-margin-bottom:96px}.sharehead{display:block;font-size:16px;margin-bottom:6px;color:#2a1a9a}
@@ -82,11 +83,12 @@ dialog.info{border-radius:22px}dialog.info::backdrop{background:rgba(8,4,40,.65)
 <div><label for="name">Nome visibile</label><input id="name" maxlength="80" required placeholder="Come ti chiami in community?"></div>
 <div><label for="level">Livello</label><select id="level" required><option value="">Seleziona</option><option>Bronze</option><option>Silver</option><option>Silver-Gold</option><option>Gold</option><option>Gold+</option></select></div>
 </div><label for="side">Lato preferito</label><select id="side"><option value="indifferent">Indifferente</option><option value="right">Destra</option><option value="left">Sinistra</option></select>
-<label class="check"><input type="checkbox" id="showPhoto" checked> Mostra la mia foto Google agli altri giocatori</label>
+<label class="check"><input type="checkbox" id="showPhoto" checked> <span>Mostra la mia foto Google agli altri giocatori<span class="muted small" id="photoNote"></span></span></label>
 <button type="submit">Salva profilo</button></form><div id="profileMsg" class="msg" role="status"></div>
 </section>
 <div class="rowbuttons"><button class="secondary" id="refresh">Aggiorna dati</button><button class="secondary" id="privateDrive">Attiva / aggiorna Drive privato</button><button class="danger" id="signOut">Esci</button></div>
 <div id="driveStatus" class="status">I feedback non vengono trasferiti al foglio condiviso.</div>
+<section class="panel" id="myFeedback"><h2>I miei feedback privati</h2><p class="muted">Li vedi solo tu: stanno nel tuo Google Drive e servono a personalizzare il Match Score.</p><div id="fbList" class="muted">Per vederli serve l'accesso al tuo Drive.</div><button id="fbShow" class="secondary" type="button">Mostra i miei feedback</button></section>
 <div id="adminBox" class="adminbox" hidden><strong>🛠 Strumenti amministratore</strong><p class="muted small">Visibili solo a te.</p><button id="resetOpen" class="danger" type="button">Cancella tutti i dati di prova</button></div>
 </div>
 <div id="tab-create" class="tabpane" hidden>
@@ -132,7 +134,7 @@ dialog.info{border-radius:22px}dialog.info::backdrop{background:rgba(8,4,40,.65)
 const GOOGLE_CLIENT_ID = (window.PADEL_CONFIG||{}).googleClientId||"";
 const API_URL = (window.PADEL_CONFIG||{}).apiUrl||"";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
-let googleName="",idToken="",user=null,data={players:[],matches:[],registrations:[]},driveToken="",driveFileId="",privateFeedback={};
+let googlePicture="",googleName="",idToken="",user=null,data={players:[],matches:[],registrations:[]},driveToken="",driveFileId="",privateFeedback={};
 const $=id=>document.getElementById(id);
 let busyCount=0;
 function setBusy(d){busyCount=Math.max(0,busyCount+d);$("busy").style.display=busyCount?"block":"none";}
@@ -143,10 +145,10 @@ function server(method,arg,ok,bad){if(!idToken){bad({message:"Accedi con Google 
 function setMessage(id,text){$(id).textContent=text||"";}
 function initGoogle(){if(!GOOGLE_CLIENT_ID){setMessage("authMessage","Configurazione incompleta: il proprietario deve impostare GOOGLE_CLIENT_ID nelle Proprietà script.");return;}
  const start=()=>{if(!window.google||!google.accounts||!google.accounts.id){setTimeout(start,200);return;}
- google.accounts.id.initialize({client_id:GOOGLE_CLIENT_ID,callback:async response=>{idToken=response.credential;try{const p=JSON.parse(atob(idToken.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));user={email:p.email,sub:p.sub};googleName=String(p.name||p.given_name||"").slice(0,80);setMessage("authMessage","Accesso effettuato: "+user.email);$("app").style.display="block";await refreshData();maybeStartTour();}catch(e){setMessage("authMessage","Impossibile leggere il profilo Google.");}}});
+ google.accounts.id.initialize({client_id:GOOGLE_CLIENT_ID,callback:async response=>{idToken=response.credential;try{const p=JSON.parse(atob(idToken.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));user={email:p.email,sub:p.sub};googleName=String(p.name||p.given_name||"").slice(0,80);googlePicture=String(p.picture||"");setMessage("authMessage","Accesso effettuato: "+user.email);$("app").style.display="block";await refreshData();maybeStartTour();}catch(e){setMessage("authMessage","Impossibile leggere il profilo Google.");}}});
  google.accounts.id.renderButton($("googleButton"),{theme:"outline",size:"large",shape:"pill",text:"signin_with",locale:"it"});
  };start();}
-function refreshData(){server("getAppData",null,d=>{data=d;user=d.user;const me=d.me;enterApp();if(d.inviteStatus==="used")setMessage("matchesMsg","Questo link d'invito è già stato usato (forse da te) o non è più valido. Se non trovi la partita, chiedi a chi ti ha invitato.");$("adminBox").hidden=!(d.user&&d.user.isAdmin);if(!tabInit){tabInit=true;showTab((focusMatch||me)?"matches":"profile");}if(me){$("name").value=me.displayName||"";$("level").value=me.skillLevel||"";$("side").value=me.preferredSide||"indifferent";$("showPhoto").checked=!!me.photoUrl;}else{if(!$("name").value&&googleName)$("name").value=googleName;setMessage("profileMsg","Benvenuto! Controlla il nome, scegli livello e lato e premi “Salva profilo”: ti serve per iscriverti alle partite.");}render();},e=>setMessage("matchesMsg",e.message||"Errore di caricamento"));}
+function refreshData(){server("getAppData",null,d=>{data=d;user=d.user;const me=d.me;enterApp();{const has=!!googlePicture||!!(me&&me.photoUrl);$("showPhoto").disabled=!has;$("photoNote").textContent=has?"":" · nessuna foto sul tuo account Google: comparirà l'iniziale";if(!has)$("showPhoto").checked=false;}if(d.inviteStatus==="used")setMessage("matchesMsg","Questo link d'invito è già stato usato (forse da te) o non è più valido. Se non trovi la partita, chiedi a chi ti ha invitato.");$("adminBox").hidden=!(d.user&&d.user.isAdmin);if(!tabInit){tabInit=true;showTab((focusMatch||me)?"matches":"profile");}if(me){$("name").value=me.displayName||"";$("level").value=me.skillLevel||"";$("side").value=me.preferredSide||"indifferent";$("showPhoto").checked=!!me.photoUrl;}else{if(!$("name").value&&googleName)$("name").value=googleName;setMessage("profileMsg","Benvenuto! Controlla il nome, scegli livello e lato e premi “Salva profilo”: ti serve per iscriverti alle partite.");}render();},e=>setMessage("matchesMsg",e.message||"Errore di caricamento"));}
 let inviteToken=new URLSearchParams(location.search).get("t")||"";
 function clearInviteToken(){inviteToken="";try{const u=new URL(location.href);u.searchParams.delete("t");history.replaceState(null,"",u.pathname+u.search);}catch(e){}}
 let focusMatch=new URLSearchParams(location.search).get("match")||"";
@@ -288,7 +290,7 @@ function lineupView(m,regs){const box=el("div","lview");[0,1].forEach(pi=>{const
 function matchCard(m){
  const regs=data.registrations.filter(r=>r.matchId===m.matchId),mine=regs.find(r=>r.playerId===user.playerId),others=regs.filter(r=>r.playerId!==user.playerId),completed=m.status==="completed",own=!!mine;
  const invitedMe=!!m.lineup&&!own&&m.lineup.some(x=>x.playerId===user.playerId||x.mine),taken=m.seatsTaken!=null?m.seatsTaken:m.registeredCount,isOwner=m.createdBy===user.playerId||user.isAdmin;
- const item=el("details","match"),d=new Date(m.dateTime);
+ const item=el("details","match"),d=new Date(m.dateTime);item.dataset.id=m.matchId;
  const when=isNaN(d.getTime())?"Data da definire":d.toLocaleString("it-IT",{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
  const head=el("div","matchhead");head.append(el("strong",null,m.venue),el("span","pill",taken+"/4 posti"));
  const chips=el("div","chips");if(invitedMe)chips.append(el("span","chip warn","📩 Sei invitato: accetta"));if(own)chips.append(el("span","chip ok","✓ Sei iscritto"));if(completed)chips.append(el("span","chip","Conclusa"));else if(taken>=4)chips.append(el("span","chip","Completa"));
@@ -309,7 +311,7 @@ function matchCard(m){
  if(googleCalUrl(m)){const cal=el("a","btn secondary","Aggiungi al calendario");cal.href=googleCalUrl(m);cal.target="_blank";cal.rel="noopener noreferrer";btns.append(cal);const ics=el("button","secondary",".ics");ics.title="Scarica file per Apple/Outlook";ics.onclick=()=>downloadIcs(m);btns.append(ics);}
  const shareBtn=el("button","secondary","Condividi");shareBtn.onclick=()=>toggleShare(m,item);btns.append(shareBtn);
  body.append(btns);
- if(mine){const box=el("div","fbbox");box.append(el("strong",null,"Feedback riservato"));
+ if(mine){const box=el("div","fbbox");box.append(el("strong",null,"Feedback riservato"));const saved=driveToken?myFeedbackEntries().filter(e=>e.matchId===m.matchId):[];if(saved.length){box.append(el("div","muted small","Già inviati da te:"));saved.forEach(e=>box.append(feedbackLine(e)));}
   if(!completed){const b=el("button","secondary","Feedback disponibile dopo la partita");b.disabled=true;box.append(el("br"),b,el("p","muted","Quando la partita è conclusa potrai valutare in privato un compagno. Resta nel tuo Google Drive."));}
   else if(!others.length)box.append(el("p","muted","Non ci sono altri iscritti da valutare."));
   else{const open=el("button",null,"Lascia un feedback");const form=el("form");form.hidden=true;
@@ -333,25 +335,30 @@ function manageInfoSeen(){try{return localStorage.getItem("padelManageInfoSeen")
 function showManageInfo(){const d=$("manageInfo");if(!d.open)d.showModal();}
 $("manageInfoClose").onclick=()=>{$("manageInfo").close();try{localStorage.setItem("padelManageInfoSeen","1");}catch(e){}};
 $("manageInfoLink").onclick=e=>{e.preventDefault();showManageInfo();};
-function render(){const root=$("matches");root.replaceChildren();
+const REPLY={yes:"Sì, volentieri",maybe:"Dipende",no:"Preferirei di no"};
+function myFeedbackEntries(){const out=[];Object.keys(privateFeedback||{}).forEach(pid=>{const f=privateFeedback[pid];(f&&Array.isArray(f.history)?f.history:[]).forEach(h=>out.push({pid:pid,matchId:h.matchId,again:h.wouldPlayAgain,note:h.experience||"",at:h.createdAt||""}));});return out.sort((a,b)=>String(b.at).localeCompare(String(a.at)));}
+function feedbackLine(e){const p=data.players.find(x=>x.playerId===e.pid),m=data.matches.find(x=>x.matchId===e.matchId),d=e.at?new Date(e.at).toLocaleDateString("it-IT"):"";const line=el("div","fbitem");line.append(el("strong",null,p?p.displayName:"Giocatore"),el("span","muted small"," · "+(REPLY[e.again]||"")+(m?" · "+m.venue:"")+(d?" · "+d:"")));if(e.note)line.append(el("p",null,"“"+e.note+"”"));return line;}
+function renderMyFeedback(){const box=$("fbList");box.replaceChildren();if(!driveToken){box.textContent="Per vederli serve l'accesso al tuo Drive: premi il pulsante.";$("fbShow").hidden=false;return;}$("fbShow").hidden=true;const list=myFeedbackEntries();if(!list.length){box.textContent="Non hai ancora lasciato feedback.";return;}list.forEach(e=>box.append(feedbackLine(e)));}
+$("fbShow").onclick=()=>{fbMsgEl=null;requestDriveToken(()=>renderMyFeedback());};
+function render(){const root=$("matches");const openIds=new Set([...root.querySelectorAll("details.match[open]")].map(d=>d.dataset.id));root.replaceChildren();
  const inv=data.matches.filter(m=>m.lineup&&m.status!=="completed"&&!data.registrations.some(r=>r.matchId===m.matchId&&r.playerId===user.playerId)&&m.lineup.some(x=>x.playerId===user.playerId||x.mine)).length;
  if(inv)root.append(el("p","pending","📩 Hai "+inv+(inv===1?" invito":" inviti")+" da accettare: apri la partita e premi “Accetta invito”."));
  if(!data.matches.length)root.append(document.createTextNode("Non ci sono ancora partite aperte. Proponine una nella scheda Crea partita."));
- data.matches.forEach(m=>root.append(matchCard(m)));
+ data.matches.forEach(m=>{const c=matchCard(m);if(openIds.has(m.matchId))c.open=true;root.append(c);});
  fillClubs();if(createEditor)createEditor.refresh();else buildCreateEditor();renderSuggestions();}
 function fill(el,items,placeholder){const old=el.value;el.replaceChildren();const first=document.createElement("option");first.value="";first.textContent=placeholder;el.append(first);items.forEach(x=>{const o=document.createElement("option");o.value=x.value;o.textContent=x.label;el.append(o)});if(items.some(x=>x.value===old))el.value=old;}
 $("profileForm").onsubmit=e=>{e.preventDefault();server("saveProfile",{displayName:$("name").value,skillLevel:$("level").value,preferredSide:$("side").value,showPhoto:$("showPhoto").checked},r=>{setMessage("profileMsg",r.message);refreshData();},err=>setMessage("profileMsg",err.message||"Errore"));};
 $("matchForm").onsubmit=e=>{e.preventDefault();let venue,lineup;try{venue=venueValue();lineup=createEditor.get();}catch(err){setMessage("matchMsg",err.message||"Controlla i dati.");return;}
  server("createMatch",{venue:venue,dateTime:$("dateTime").value,notes:$("notes").value,lineup:lineup},r=>{setMessage("matchMsg","");$("matchForm").reset();createEditor=null;buildCreateEditor();clubReset();pendingShare=(r&&r.matchId)||"";setMessage("matchesMsg","Partita creata! Invita gli altri giocatori da qui sotto.");showTab("matches");refreshData();if(!manageInfoSeen())showManageInfo();},err=>setMessage("matchMsg",err.message||"Errore"));};
 function requestDriveToken(done){if(!window.google||!google.accounts||!google.accounts.oauth2){setDriveMsg("Servizio Google OAuth non caricato. Ricarica la pagina.");return;}
- const client=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CLIENT_ID,scope:DRIVE_SCOPE,callback:async response=>{if(response.error){setDriveMsg("Autorizzazione Drive non completata: "+response.error);return;}driveToken=response.access_token;try{await loadPrivateFeedback();setDriveMsg("Drive privato collegato. I feedback restano nel tuo account Google.");if(done)done();}catch(err){setDriveMsg("Errore Drive: "+err.message);}}});client.requestAccessToken({prompt:""});}
+ const client=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CLIENT_ID,scope:DRIVE_SCOPE,callback:async response=>{if(response.error){setDriveMsg("Autorizzazione Drive non completata: "+response.error);return;}driveToken=response.access_token;try{await loadPrivateFeedback();renderMyFeedback();render();setDriveMsg("Drive privato collegato. I feedback restano nel tuo account Google.");if(done)done();}catch(err){setDriveMsg("Errore Drive: "+err.message);}}});client.requestAccessToken({prompt:""});}
 async function driveFetch(url,options={}){const res=await fetch(url,{...options,headers:{...(options.headers||{}),Authorization:"Bearer "+driveToken}});if(!res.ok)throw new Error("Google Drive ("+res.status+"): "+(await res.text()).slice(0,180));return res;}
 async function loadPrivateFeedback(){const q=encodeURIComponent("name='PadelCommunityPrivateFeedback.json' and trashed=false");const list=await driveFetch("https://www.googleapis.com/drive/v3/files?q="+q+"&spaces=drive&fields=files(id,name,mimeType)&pageSize=100");const json=await list.json();const found=(json.files||[]).find(f=>f.mimeType==="application/json");if(!found){driveFileId="";privateFeedback={};return;}driveFileId=found.id;const res=await driveFetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(driveFileId)+"?alt=media");privateFeedback=await res.json();if(!privateFeedback||typeof privateFeedback!=="object")privateFeedback={};}
 async function savePrivateFeedback(){const body=JSON.stringify(privateFeedback);if(driveFileId){await driveFetch("https://www.googleapis.com/upload/drive/v3/files/"+encodeURIComponent(driveFileId)+"?uploadType=media",{method:"PATCH",headers:{"Content-Type":"application/json"},body});}
  else{const boundary="padel_"+Math.random().toString(16).slice(2);const metadata={name:"PadelCommunityPrivateFeedback.json",mimeType:"application/json",description:"Private Padel Community feedback. Created by the user-owned app."};const multipart="--"+boundary+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"+JSON.stringify(metadata)+"\r\n--"+boundary+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"+body+"\r\n--"+boundary+"--";const res=await driveFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name",{method:"POST",headers:{"Content-Type":"multipart/related; boundary="+boundary},body:multipart});const result=await res.json();driveFileId=result.id;}}
 let fbMsgEl=null;
 function setDriveMsg(t){setMessage("driveStatus",t);if(fbMsgEl)fbMsgEl.textContent=t;}
-async function saveFeedback(matchId,about,again,experience,msgEl,form){const old=privateFeedback[about]||{history:[]};old.history=old.history||[];old.history.push({matchId:matchId,wouldPlayAgain:again,experience:experience,createdAt:new Date().toISOString()});old.lastRating=again;old.updatedAt=new Date().toISOString();privateFeedback[about]=old;try{await savePrivateFeedback();msgEl.textContent="Salvato nel tuo Google Drive privato. Nessun feedback è stato inviato al foglio condiviso.";form.reset();renderSuggestions();}catch(err){msgEl.textContent="Non è stato possibile salvare il feedback: "+err.message;}}
+async function saveFeedback(matchId,about,again,experience,msgEl,form){const old=privateFeedback[about]||{history:[]};old.history=old.history||[];old.history.push({matchId:matchId,wouldPlayAgain:again,experience:experience,createdAt:new Date().toISOString()});old.lastRating=again;old.updatedAt=new Date().toISOString();privateFeedback[about]=old;try{await savePrivateFeedback();msgEl.textContent="Salvato nel tuo Google Drive privato. Nessun feedback è stato inviato al foglio condiviso.";form.reset();renderSuggestions();renderMyFeedback();render();setMessage("matchesMsg","Feedback salvato nel tuo Google Drive privato.");}catch(err){msgEl.textContent="Non è stato possibile salvare il feedback: "+err.message;}}
 $("privateDrive").onclick=()=>{fbMsgEl=null;requestDriveToken(()=>renderSuggestions());};
 function rank(level){return {"Bronze":1,"Silver":2,"Silver-Gold":3,"Gold":4,"Gold+":5}[level]||0;}
 function score(a,b){let s=50;const x=a.preferredSide||"indifferent",y=b.preferredSide||"indifferent";if((x==="left"&&y==="right")||(x==="right"&&y==="left"))s+=25;else if(x==="indifferent"||y==="indifferent")s+=12;else if(x===y)s-=15;s+=Math.max(-20,20-Math.abs(rank(a.skillLevel)-rank(b.skillLevel))*10);const f=privateFeedback[b.playerId];if(f&&Array.isArray(f.history)&&f.history.length){const points=f.history.map(h=>h.wouldPlayAgain==="yes"?1:(h.wouldPlayAgain==="maybe"?0.25:-1));const avg=points.reduce((sum,n)=>sum+n,0)/points.length;s+=Math.round(avg*20);}return Math.max(0,Math.min(100,Math.round(s)));}
