@@ -16,7 +16,7 @@ function doGet() {
   return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
 }
 
-const BACKEND_VERSION = "2026-10-24.2";
+const BACKEND_VERSION = "2026-10-24.3";
 const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
@@ -140,7 +140,7 @@ function registerForMatch(idToken,input) {
     let slot=-1;
     if(lineup) {
       slot=lineup.findIndex(x=>x.playerId===user.playerId);
-      if(slot<0) { slot=lineup.findIndex(x=>!x.playerId&&!x.name); if(slot<0) throw new Error("La partita è già completa."); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); }
+      if(slot<0) { slot=pickSlot_(lineup,String(profile.preferredSide||"")); if(slot<0) throw new Error("La partita è già completa."); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); }
     } else if(active.length>=4) throw new Error("La partita è già completa.");
     sheet_("Registrations").appendRow([Utilities.getUuid(),matchId,user.playerId,"joined",new Date(),""]);
     return {message:"Iscrizione registrata."};
@@ -259,6 +259,14 @@ function installTriggers() {
   ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()==="processInvites").forEach(t=>ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger("processInvites").timeBased().everyHours(1).create();
   return "Controllo inviti attivato: ogni ora.";
+}
+
+/** Free seat that fits the player: right = positions 0 and 2, left = 1 and 3; indifferent players fit anywhere; if no fitting seat is left, any free seat. */
+function pickSlot_(lineup,side) {
+  const free=[0,1,2,3].filter(i=>!lineup[i].playerId&&!lineup[i].name);
+  if(!free.length) return -1;
+  if(side==="right"||side==="left") { const fit=free.filter(i=>(i%2===0?"right":"left")===side); if(fit.length) return fit[0]; }
+  return free[0];
 }
 
 function parseLineup_(v) {
