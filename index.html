@@ -38,6 +38,7 @@ dialog.info{border:0;border-radius:18px;max-width:min(520px,calc(100% - 28px));p
 .brand{display:flex;align-items:center;gap:10px}.brand img{border-radius:9px}
 
 /* ===== Cosmic theme ===== */
+#clubHint button{display:block;margin:6px 0 0;text-align:left;font-weight:700}
 .clubwrap{position:relative}.clubsugg{left:0;right:0;top:100%;margin-top:4px}.sharebox{scroll-margin-bottom:96px}.sharehead{display:block;font-size:16px;margin-bottom:6px;color:#2a1a9a}
 #matches{color:var(--ink);font-size:16px}
 html{background:#0b0a24}body{background:radial-gradient(900px 560px at 88% -8%,#5b2cff66,transparent 60%),radial-gradient(700px 520px at -10% 18%,#00c8ff33,transparent 60%),linear-gradient(180deg,#120d46 0%,#0b0a24 55%);background-attachment:fixed;min-height:100vh}
@@ -90,7 +91,7 @@ dialog.info{border-radius:22px}dialog.info::backdrop{background:rgba(8,4,40,.65)
 <section class="panel"><h2>Proponi una partita</h2><form id="matchForm"><div class="grid">
 <div><label for="clubInput">Circolo</label><div class="clubwrap"><input id="clubInput" autocomplete="off" maxlength="120" required placeholder="Cerca o scrivi il nome del circolo" role="combobox" aria-autocomplete="list"><ul id="clubList" class="sugg clubsugg" hidden role="listbox"></ul></div>
 <p class="muted small" id="clubStatus"></p>
-<div id="clubNew" hidden><label for="clubCity">Indirizzo o città del nuovo circolo</label><input id="clubCity" maxlength="80" placeholder="Es. Via Roma 12, Roma"><p class="muted small" id="clubHint"></p></div></div>
+<div id="clubNew" hidden><label for="clubCity">Indirizzo o città (facoltativo)</label><input id="clubCity" maxlength="80" placeholder="Es. Via Roma 12, Roma"><p class="muted small" id="clubHint"></p></div></div>
 <div><label for="dateTime">Data e ora</label><input id="dateTime" type="datetime-local" required></div>
 </div><label>Chi gioca</label><p class="muted small">Quattro posti, due coppie. Tu sei già dentro: cerca gli altri tra i giocatori della community (i più compatibili sono in alto) e riceveranno un invito con il posto riservato. Per chi non usa l'app scrivi un nome a mano. Nella tua coppia puoi invitare un compagno fisso per questa partita.</p>
 <p class="muted small">⏰ Se un invitato non risponde entro 24 ore: promemoria se la partita è a più di 4 giorni, altrimenti il posto si libera e ti avviso.</p><div id="lineupBox"></div>
@@ -191,8 +192,8 @@ function ltr(p){return sideLtr[p&&p.preferredSide]||"I";}
 function nameOf(id){const p=data.players.find(x=>x.playerId===id);return (id===user.playerId?"tu":(p?p.displayName:"Giocatore"))+" ("+ltr(p)+")";}
 function normClub(t){return String(t||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g," ").trim();}
 function knownClubs(){const c={};data.matches.forEach(m=>{const k=normClub(m.venue);if(!k)return;(c[k]=c[k]||{name:m.venue,n:0}).n++;});return Object.values(c).sort((x,y)=>y.n-x.n||x.name.localeCompare(y.name,"it"));}
-let clubValue="",clubIsNew=false,clubTimer=null,clubSeq=0,clubMap=[];
-function clubSetNew(on){clubIsNew=on;$("clubNew").hidden=!on;$("clubCity").required=on;if(!on){$("clubCity").value="";$("clubHint").replaceChildren();}}
+let clubValue="",clubIsNew=false,clubTimer=null,clubSeq=0,clubMap=[],clubLoading=false;
+function clubSetNew(on){clubIsNew=on;$("clubNew").hidden=!on;$("clubCity").required=false;if(!on){$("clubCity").value="";$("clubHint").replaceChildren();}}
 function clubReset(){$("clubInput").value="";clubValue="";clubMap=[];clubSetNew(false);$("clubStatus").textContent="";$("clubList").hidden=true;}
 function clubChoose(v){clubValue=v;$("clubInput").value=v;clubSetNew(false);$("clubList").hidden=true;$("clubStatus").textContent="✓ Circolo selezionato";}
 function fillClubs(){const l=$("clubList");if(!l.hidden&&document.activeElement===$("clubInput"))showClubList();}
@@ -201,20 +202,32 @@ function tokOk(t,w){if(w.includes(t))return true;if(t.length<4)return false;cons
 function fuzzyClub(q,name){const k=normClub(q),n=normClub(name);if(!k)return false;if(n.includes(k)||k.replace(/ /g,"")===n.replace(/ /g,"")||n.replace(/ /g,"").includes(k.replace(/ /g,"")))return true;const qt=k.split(" ").filter(t=>t.length>=2),nt=n.split(" ");return qt.length>0&&qt.every(t=>nt.some(w=>tokOk(t,w)));}
 function clubMatches(q){const k=normClub(q);if(k.length<2)return knownClubs().slice(0,5);const list=knownClubs().filter(c=>fuzzyClub(q,c.name));return list.sort((x,y)=>(normClub(y.name).includes(k)?1:0)-(normClub(x.name).includes(k)?1:0)||y.n-x.n).slice(0,5);}
 function formatPlace(r){const a=r.address||{};const road=[a.road||a.pedestrian||a.path,a.house_number].filter(Boolean).join(" ");const city=a.city||a.town||a.village||a.municipality||a.suburb||a.county||"";const name=(r.name&&r.name!==a.road)?r.name:"";return [name,road,city].filter(Boolean).join(", ");}
-function clubSearchMap(q){const seq=++clubSeq;clearTimeout(clubTimer);if(q.trim().length<4){clubMap=[];return;}
- clubTimer=setTimeout(()=>{fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=it&accept-language=it&q="+encodeURIComponent(q.trim()),{headers:{"Accept":"application/json"}}).then(r=>r.json()).then(list=>{if(seq!==clubSeq)return;clubMap=(Array.isArray(list)?list:[]).map(r=>({label:formatPlace(r),full:r.display_name||""})).filter(x=>x.label);if(document.activeElement===$("clubInput"))showClubList();}).catch(()=>{if(seq!==clubSeq)return;clubMap=[];$("clubStatus").textContent="Ricerca indirizzi non disponibile: puoi scrivere l'indirizzo a mano.";});},550);}
+function formatPhoton(f){const p=f.properties||{};const road=[p.street,p.housenumber].filter(Boolean).join(" ");const city=p.city||p.town||p.village||p.county||p.state||"";return [(p.name&&p.name!==p.street)?p.name:"",road,city].filter(Boolean).join(", ");}
+function photonSearch(t){return fetch("https://photon.komoot.io/api/?limit=6&lat=42.5&lon=12.5&q="+encodeURIComponent(t)).then(r=>{if(!r.ok)throw new Error("photon");return r.json();}).then(j=>(j.features||[]).map(f=>({label:formatPhoton(f),full:(f.properties||{}).country||"",it:/^ital/i.test((f.properties||{}).country||"")})).filter(x=>x.label));}
+function nominatimSearch(t){return fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=it&accept-language=it&q="+encodeURIComponent(t),{headers:{"Accept":"application/json"}}).then(r=>{if(!r.ok)throw new Error("nominatim");return r.json();}).then(list=>(Array.isArray(list)?list:[]).map(r=>({label:formatPlace(r),full:r.display_name||"",it:true})).filter(x=>x.label));}
+function clubSearchMap(q){const seq=++clubSeq;clearTimeout(clubTimer);clubMap=[];clubLoading=false;const t=q.trim();if(t.length<3)return;
+ clubTimer=setTimeout(async()=>{clubLoading=true;if(document.activeElement===$("clubInput"))showClubList();
+  const qs=[t];if(!/padel|tennis|club|sport|circolo|asd|ssd/i.test(t))qs.push(t+" padel");
+  let res=[],failed=0;const run=async fn=>{const out=await Promise.all(qs.map(x=>fn(x).catch(()=>{failed++;return [];})));return out.flat();};
+  res=await run(photonSearch);if(!res.length)res=res.concat(await run(nominatimSearch));
+  if(seq!==clubSeq)return;clubLoading=false;
+  const seen={};clubMap=res.filter(x=>{const k=normClub(x.label);if(seen[k])return false;seen[k]=1;return true;}).sort((x,y)=>(y.it?1:0)-(x.it?1:0)).slice(0,6);if(clubMap.some(x=>x.it))clubMap=clubMap.filter(x=>x.it);
+  if(!clubMap.length&&failed>=qs.length)$("clubStatus").textContent="Ricerca indirizzi non disponibile: scrivi il nome, l'indirizzo è facoltativo.";
+  if(document.activeElement===$("clubInput"))showClubList();if(clubIsNew)updateClubHint();},500);}
 function showClubList(){const ul=$("clubList"),q=$("clubInput").value.trim();ul.replaceChildren();const ex=clubMatches(q);
  if(ex.length)ul.append(el("li","sg-h",q?"Circoli già presenti: scegli quello giusto per evitare doppioni":"Circoli già usati nella community"));
  ex.forEach(c=>{const li=el("li","sg");li.append(el("span","sg-n",c.name));li.onmousedown=e=>{e.preventDefault();clubChoose(c.name);};ul.append(li);});
  const known=knownClubs().map(c=>normClub(c.name)),maps=clubMap.filter(m=>{const n=normClub(m.label);return !known.some(k=>k===n||k.includes(n)||n.includes(k));});
  if(maps.length)ul.append(el("li","sg-h","Luoghi trovati sulla mappa (con indirizzo)"));
  maps.forEach(m=>{const li=el("li","sg");li.append(el("span","sg-n",m.label));li.title=m.full;li.onmousedown=e=>{e.preventDefault();clubChoose(m.label);};ul.append(li);});
- if(q.length>=3&&!ex.some(c=>normClub(c.name)===normClub(q))){const n=el("li","sg sg-g","➕ Aggiungi «"+q+"» come nuovo circolo");n.onmousedown=e=>{e.preventDefault();clubValue="";clubSetNew(true);ul.hidden=true;$("clubStatus").textContent="Nuovo circolo: aggiungi l'indirizzo o la città.";updateClubHint();$("clubCity").focus();};ul.append(n);}
+ if(q.length>=3&&!ex.some(c=>normClub(c.name)===normClub(q))){const n=el("li","sg sg-g","➕ Aggiungi «"+q+"» come nuovo circolo");n.onmousedown=e=>{e.preventDefault();clubValue="";clubSetNew(true);ul.hidden=true;$("clubStatus").textContent="Nuovo circolo: l'indirizzo è facoltativo.";updateClubHint();};ul.append(n);}
+ if(clubLoading&&q.length>=3)ul.append(el("li","sg-h","🔎 Cerco il circolo e l'indirizzo…"));
  ul.hidden=!ul.children.length;}
 function clubSimilar(){const q=$("clubInput").value;if(normClub(q).length<3)return null;return knownClubs().find(c=>fuzzyClub(q,c.name))||null;}
-function updateClubHint(){const h=$("clubHint");h.replaceChildren();const hit=clubSimilar();if(!hit)return;h.append("Esiste già «"+hit.name+"»: usa quello per evitare doppioni. ");const b=el("button","secondary","Usa «"+hit.name+"»");b.type="button";b.onclick=()=>clubChoose(hit.name);h.append(b);}
-function venueValue(){const q=$("clubInput").value.trim();if(clubValue)return clubValue;const ex=knownClubs().find(c=>normClub(c.name)===normClub(q));if(ex)return ex.name;if(!q)throw new Error("Scegli il circolo: cerca per nome o scrivilo.");if(!clubIsNew)throw new Error("Scegli un circolo dalla lista oppure premi «Aggiungi … come nuovo circolo».");if(q.length<3)throw new Error("Scrivi il nome del circolo (almeno 3 lettere).");const c=$("clubCity").value.trim();if(!c)throw new Error("Aggiungi la città o l'indirizzo: aiuta gli altri a trovare il campo.");return q+", "+c;}
-$("clubInput").oninput=()=>{clubValue="";clubSetNew(false);$("clubStatus").textContent="";clubSearchMap($("clubInput").value);showClubList();};
+function updateClubHint(){const h=$("clubHint");h.replaceChildren();const hit=clubSimilar();if(hit){h.append("Esiste già «"+hit.name+"»: usa quello per evitare doppioni. ");const b=el("button","secondary","Usa «"+hit.name+"»");b.type="button";b.onclick=()=>clubChoose(hit.name);h.append(b);}
+ if(clubMap.length){h.append(el("div","muted small","📍 Compila in automatico con un indirizzo trovato:"));clubMap.slice(0,3).forEach(m=>{const b=el("button","secondary",m.label);b.type="button";b.onclick=()=>clubChoose(m.label);h.append(b);});}else if(clubLoading)h.append("🔎 Cerco l'indirizzo…");}
+function venueValue(){const q=$("clubInput").value.trim();if(clubValue)return clubValue;const ex=knownClubs().find(c=>normClub(c.name)===normClub(q));if(ex)return ex.name;if(!q)throw new Error("Scrivi il nome del circolo: ti suggeriamo i circoli e gli indirizzi mentre digiti.");if(q.length<3)throw new Error("Scrivi il nome del circolo (almeno 3 lettere).");if(!clubIsNew){const sim=clubSimilar();if(sim)throw new Error("Esiste già «"+sim.name+"»: sceglilo dalla lista oppure premi «Aggiungi … come nuovo circolo» se è un altro.");}const c=clubIsNew?$("clubCity").value.trim():"";return c?q+", "+c:q;}
+$("clubInput").oninput=()=>{clubValue="";clubSetNew(false);clubIsNew=false;$("clubStatus").textContent="";clubSearchMap($("clubInput").value);showClubList();};
 $("clubInput").onfocus=()=>showClubList();
 $("clubInput").onblur=()=>setTimeout(()=>{$("clubList").hidden=true;const q=$("clubInput").value;if(!clubValue&&!clubIsNew){const m=knownClubs().find(c=>normClub(c.name)===normClub(q));if(m)clubChoose(m.name);}},150);
 $("clubInput").onkeydown=e=>{if(e.key==="Escape")$("clubList").hidden=true;};
