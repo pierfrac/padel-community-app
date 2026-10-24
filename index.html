@@ -2,6 +2,16 @@
 <html lang="it">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Padel Community · Sei invitato a una partita</title>
+<meta name="description" content="Trova partite di padel, invita i compagni e gioca con persone compatibili. Scegli il tuo posto in pochi tocchi.">
+<meta name="theme-color" content="#176b4d">
+<link rel="icon" type="image/svg+xml" href="logo.svg"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Padel Community"><meta property="og:locale" content="it_IT">
+<meta property="og:title" content="Padel Community · Sei invitato a una partita">
+<meta property="og:description" content="Scegli il tuo posto e gioca con compagni compatibili. Apri il link e accedi con Google.">
+<meta property="og:url" content="https://pierfrac.github.io/padel-community-app/">
+<meta property="og:image" content="https://pierfrac.github.io/padel-community-app/og-image.png?v=1"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="Logo di Padel Community: racchetta da padel e pallina">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Padel Community · Sei invitato a una partita"><meta name="twitter:image" content="https://pierfrac.github.io/padel-community-app/og-image.png?v=1">
 <script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -25,12 +35,13 @@ details.match{border:1px solid var(--line);border-radius:16px;padding:0;margin:1
 .slot{position:relative}.sugg{position:absolute;left:72px;right:0;top:46px;z-index:12;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.15);list-style:none;margin:0;padding:4px;max-height:280px;overflow:auto}.sugg[hidden]{display:none}.sugg li{display:flex;align-items:center;gap:6px;padding:8px;border-radius:8px;cursor:pointer;font-size:14px}.sugg li:hover{background:var(--mint)}.sugg .sg-h{font-size:12px;color:var(--muted);cursor:default;font-weight:700}.sugg .sg-h:hover{background:none}.sugg .sg-n{font-weight:700}.sugg .sg-m{color:var(--muted);font-size:12px;flex:1}.sugg .sg-b{background:var(--green);color:#fff;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:800}.sugg .sg-g{color:var(--green);font-weight:700}
 .sugg .sg-t{color:var(--muted);font-size:12px;justify-content:center;border-top:1px solid var(--line);border-radius:0}
 dialog.info{border:0;border-radius:18px;max-width:min(520px,calc(100% - 28px));padding:20px 22px;color:var(--ink)}dialog.info::backdrop{background:rgba(0,0,0,.4)}dialog.info h3{margin:0 0 8px}
+.brand{display:flex;align-items:center;gap:10px}.brand img{border-radius:9px}
 </style></head>
 <body><div id="busy" role="status" aria-live="polite">Caricamento…</div>
 <main>
 <section class="hero" id="hero">
 <div id="loggedBar" class="logged"><span class="tick" aria-hidden="true">✓</span><span id="loggedText"></span><button type="button" id="signOut2">Esci</button></div>
-<div class="eyebrow">Padel Community</div><h1>Giochiamo meglio insieme.</h1>
+<div class="eyebrow brand"><img src="logo.svg" alt="" width="34" height="34"> Padel Community</div><h1>Giochiamo meglio insieme.</h1>
 <p>Trova partite, incontra compagni compatibili e organizza il campo. Il Match Score combina livello, lato preferito e le tue esperienze passate per aiutarti a scegliere con chi giocare.</p>
 <p class="notice"><strong>I tuoi feedback personali restano nel tuo Google Drive privato.</strong> Non vengono salvati nel foglio condiviso e non sono accessibili agli altri giocatori né al gestore del foglio. Servono solo a personalizzare il tuo Match Score. La prima volta che attivi questa funzione, Google ti chiederà il permesso di creare e leggere il file privato dell'app nel tuo Drive.</p>
 <div id="invite" class="invite" hidden><strong id="inviteTitle"></strong><p id="inviteBody" class="muted"></p></div>
