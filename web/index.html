@@ -24,6 +24,7 @@ details.match{border:1px solid var(--line);border-radius:16px;padding:0;margin:1
 .lineup .pair{border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:8px 0;background:#fafcfa}.lineup .pair>strong{font-size:14px}.slot{margin:8px 0}.slot .row{display:grid;grid-template-columns:64px 1fr auto;gap:8px;align-items:center}.slot .lab{font-size:12px;font-weight:750;color:var(--green)}.slot input{margin:0}.slot button{margin:0;padding:8px 12px}.slot .info{font-size:12px;color:var(--muted);min-height:16px;margin:2px 0 0 72px}.lview .pair{padding:6px 0;border-top:1px dashed var(--line)}.lview .lcell{padding:3px 0;font-size:14px}.chip.warn{background:#fff1d6;color:#8a5a00}.pending{background:#fff1d6;color:#8a5a00;border-radius:12px;padding:10px 12px;font-weight:700;font-size:14px;margin:8px 0}.editbox{margin-top:10px;padding:12px;background:#f3f8f4;border-radius:14px}
 .slot{position:relative}.sugg{position:absolute;left:72px;right:0;top:46px;z-index:12;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.15);list-style:none;margin:0;padding:4px;max-height:280px;overflow:auto}.sugg[hidden]{display:none}.sugg li{display:flex;align-items:center;gap:6px;padding:8px;border-radius:8px;cursor:pointer;font-size:14px}.sugg li:hover{background:var(--mint)}.sugg .sg-h{font-size:12px;color:var(--muted);cursor:default;font-weight:700}.sugg .sg-h:hover{background:none}.sugg .sg-n{font-weight:700}.sugg .sg-m{color:var(--muted);font-size:12px;flex:1}.sugg .sg-b{background:var(--green);color:#fff;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:800}.sugg .sg-g{color:var(--green);font-weight:700}
 .sugg .sg-t{color:var(--muted);font-size:12px;justify-content:center;border-top:1px solid var(--line);border-radius:0}
+dialog.info{border:0;border-radius:18px;max-width:min(520px,calc(100% - 28px));padding:20px 22px;color:var(--ink)}dialog.info::backdrop{background:rgba(0,0,0,.4)}dialog.info h3{margin:0 0 8px}
 </style></head>
 <body><div id="busy" role="status" aria-live="polite">Caricamento…</div>
 <main>
@@ -55,7 +56,8 @@ details.match{border:1px solid var(--line);border-radius:16px;padding:0;margin:1
 <div><label for="dateTime">Data e ora</label><input id="dateTime" type="datetime-local" required></div>
 </div><label>Chi gioca</label><p class="muted small">Quattro posti, due coppie. Tu sei già dentro e, nella tua coppia, puoi invitare un compagno fisso per questa partita: resta bloccato nel suo posto finché non accetta o lo cambi tu. Chi inviti riceve una email: se non risponde entro 24 ore, con la partita a più di 4 giorni gli arriva un promemoria, altrimenti il posto si libera e tu vieni avvisato. cerca gli altri tra i giocatori della community, con i più compatibili in alto (riceveranno un invito da accettare) o scrivi un nome a mano per chi non usa l'app.</p><div id="lineupBox"></div>
 <label for="notes">Note facoltative</label><textarea id="notes" rows="2" maxlength="500" placeholder="Dettagli per i partecipanti"></textarea>
-<button type="submit">Proponi partita</button></form><div id="matchMsg" class="msg" role="status"></div></section>
+<button type="submit">Proponi partita</button>
+<p class="muted small"><a href="#" id="manageInfoLink">ℹ️ Inviti, cancellazione e gestione della partita</a></p></form><div id="matchMsg" class="msg" role="status"></div></section>
 <section class="panel"><h2>Match Score personale</h2><p class="muted">Suggerimenti orientativi per te: la complementarità destra/sinistra pesa molto, poi conta la vicinanza di livello e la tua esperienza privata con quella persona.</p><div id="suggestions" class="muted">Completa il profilo per vedere i suggerimenti.</div></section>
 </div>
 <div id="tab-matches" class="tabpane" hidden>
@@ -70,6 +72,13 @@ details.match{border:1px solid var(--line);border-radius:16px;padding:0;margin:1
 </div>
 <footer class="muted small" style="padding:18px 4px">MVP in prova. Per usare la community servono il deployment Apps Script e la configurazione OAuth del proprietario. Le iscrizioni sono limitate a quattro persone per partita.<br><button class="secondary" id="howTo" type="button">Come funziona</button><br><span id="versions">Versioni: caricamento…</span></footer>
 </main>
+<dialog id="manageInfo" class="info" aria-labelledby="miTitle"><h3 id="miTitle">Inviti, cancellazione e gestione</h3>
+<p><b>📩 Inviti</b><br>Chi inviti dalla community riceve un'email e un posto riservato. Se non risponde entro 24 ore: con la partita a più di 4 giorni gli arriva un promemoria; con la partita entro 4 giorni l'invito viene annullato, il posto torna libero e tu ricevi un avviso via email.</p>
+<p><b>✏️ Gestione</b><br>Dalla scheda della partita puoi usare “Modifica formazione” (cambia i posti, ma non chi è già iscritto), “Segna conclusa” (dopo l'orario di fine) e “Annulla partita”.</p>
+<p><b>❌ Cancellazioni</b><br>Chi è iscritto può annullare la propria iscrizione: il posto si libera. Se annulli la partita sparisce dall'elenco per tutti.</p>
+<p><b>⭐ Feedback</b><br>Dopo “Segna conclusa” ogni iscritto può lasciare un feedback privato sui compagni, che resta nel suo Google Drive.</p>
+<p class="muted small">Le stesse informazioni ti arrivano anche per email quando crei la partita. Puoi rivederle quando vuoi dal link sotto “Proponi partita”.</p>
+<button id="manageInfoClose" type="button">Ho capito</button></dialog>
 <dialog id="tour" class="tour" aria-labelledby="tourTitle"><div class="step" id="tourStep"></div><h3 id="tourTitle"></h3><p id="tourBody"></p><div class="rowbuttons"><button class="secondary" id="tourSkip" type="button">Salta</button><span><button class="secondary" id="tourPrev" type="button">Indietro</button> <button id="tourNext" type="button">Avanti</button></span></div></dialog>
 <script>
 const GOOGLE_CLIENT_ID = (window.PADEL_CONFIG||{}).googleClientId||"";
@@ -228,6 +237,10 @@ function matchCard(m){
  if(invitedMe)item.open=true;
  if(focusMatch&&m.matchId===focusMatch){item.classList.add("focus");item.open=true;if(!$("invite").hidden)$("inviteBody").textContent="La partita è qui sotto, evidenziata: premi “Mi iscrivo” per prenotare il tuo posto.";setTimeout(()=>item.scrollIntoView({block:"center"}),50);focusMatch="";}
  return item;}
+function manageInfoSeen(){try{return localStorage.getItem("padelManageInfoSeen")==="1";}catch(e){return false;}}
+function showManageInfo(){const d=$("manageInfo");if(!d.open)d.showModal();}
+$("manageInfoClose").onclick=()=>{$("manageInfo").close();try{localStorage.setItem("padelManageInfoSeen","1");}catch(e){}};
+$("manageInfoLink").onclick=e=>{e.preventDefault();showManageInfo();};
 function render(){const root=$("matches");root.replaceChildren();
  const inv=data.matches.filter(m=>m.lineup&&m.status!=="completed"&&!data.registrations.some(r=>r.matchId===m.matchId&&r.playerId===user.playerId)&&m.lineup.some(x=>x.playerId===user.playerId)).length;
  if(inv)root.append(el("p","pending","📩 Hai "+inv+(inv===1?" invito":" inviti")+" da accettare: apri la partita e premi “Accetta invito”."));
@@ -237,7 +250,7 @@ function render(){const root=$("matches");root.replaceChildren();
 function fill(el,items,placeholder){const old=el.value;el.replaceChildren();const first=document.createElement("option");first.value="";first.textContent=placeholder;el.append(first);items.forEach(x=>{const o=document.createElement("option");o.value=x.value;o.textContent=x.label;el.append(o)});if(items.some(x=>x.value===old))el.value=old;}
 $("profileForm").onsubmit=e=>{e.preventDefault();server("saveProfile",{displayName:$("name").value,skillLevel:$("level").value,preferredSide:$("side").value,showPhoto:$("showPhoto").checked},r=>{setMessage("profileMsg",r.message);refreshData();},err=>setMessage("profileMsg",err.message||"Errore"));};
 $("matchForm").onsubmit=e=>{e.preventDefault();let venue,lineup;try{venue=venueValue();lineup=createEditor.get();}catch(err){setMessage("matchMsg",err.message||"Controlla i dati.");return;}
- server("createMatch",{venue:venue,dateTime:$("dateTime").value,notes:$("notes").value,lineup:lineup},r=>{setMessage("matchMsg","");$("matchForm").reset();createEditor=null;buildCreateEditor();$("clubSel").value="";toggleClubNew();setMessage("matchesMsg","Partita creata: eccola qui sotto. Gli invitati la vedranno tra le partite da accettare.");showTab("matches");refreshData();},err=>setMessage("matchMsg",err.message||"Errore"));};
+ server("createMatch",{venue:venue,dateTime:$("dateTime").value,notes:$("notes").value,lineup:lineup},r=>{setMessage("matchMsg","");$("matchForm").reset();createEditor=null;buildCreateEditor();$("clubSel").value="";toggleClubNew();setMessage("matchesMsg","Partita creata: eccola qui sotto. Gli invitati la vedranno tra le partite da accettare.");showTab("matches");refreshData();if(!manageInfoSeen())showManageInfo();},err=>setMessage("matchMsg",err.message||"Errore"));};
 function requestDriveToken(done){if(!window.google||!google.accounts||!google.accounts.oauth2){setDriveMsg("Servizio Google OAuth non caricato. Ricarica la pagina.");return;}
  const client=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CLIENT_ID,scope:DRIVE_SCOPE,callback:async response=>{if(response.error){setDriveMsg("Autorizzazione Drive non completata: "+response.error);return;}driveToken=response.access_token;try{await loadPrivateFeedback();setDriveMsg("Drive privato collegato. I feedback restano nel tuo account Google.");if(done)done();}catch(err){setDriveMsg("Errore Drive: "+err.message);}}});client.requestAccessToken({prompt:""});}
 async function driveFetch(url,options={}){const res=await fetch(url,{...options,headers:{...(options.headers||{}),Authorization:"Bearer "+driveToken}});if(!res.ok)throw new Error("Google Drive ("+res.status+"): "+(await res.text()).slice(0,180));return res;}

@@ -16,7 +16,7 @@ function doGet() {
   return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
 }
 
-const BACKEND_VERSION = "2026-10-24.3";
+const BACKEND_VERSION = "2026-10-24.4";
 const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
@@ -119,6 +119,7 @@ function createMatch(idToken,input) {
   sheet_("Matches").appendRow([id,date,venue,user.playerId,"open",notes,created,eventId,JSON.stringify(lineup)]);
   sheet_("Registrations").appendRow([Utilities.getUuid(),id,user.playerId,"joined",created,""]);
   sendInvites_({matchId:id,venue:venue,date:date},profile.displayName,lineup.newInvites);
+  sendOrganizerSummary_({matchId:id,venue:venue,date:date},user.email,profile.displayName,lineup);
   return {matchId:id,message:calendarId?"Partita creata e aggiunta al calendario.":"Partita creata. Calendar non è ancora configurato."};
 }
 
@@ -215,6 +216,22 @@ function sendInvitesUnsafe_(match,organizerName,playerIds) {
       "<p>Ti abbiamo riservato un posto. <a href=\""+esc_(appLink_(match))+"\">Apri la partita e premi “Accetta invito”</a>.</p>"+
       "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore: se la partita è tra più di "+REMINDER_MIN_DAYS_LEFT+" giorni ti mandiamo un promemoria, altrimenti il posto viene liberato e l'organizzatore viene avvisato.</p>");
   });
+}
+
+/** Rules and management info, used in the organizer email (same content as the in-app popup). */
+function manageInfoHtml_() {
+  return "<p><b>Inviti</b><br>Chi inviti dalla community riceve un'email e un posto riservato. Se non risponde entro 24 ore: con la partita a più di "+REMINDER_MIN_DAYS_LEFT+" giorni gli arriva un promemoria; con la partita entro "+REMINDER_MIN_DAYS_LEFT+" giorni l'invito viene annullato, il posto torna libero e ricevi un avviso.</p>"+
+    "<p><b>Gestione</b><br>Dalla scheda della partita puoi usare “Modifica formazione” (cambia i posti, ma non chi è già iscritto), “Segna conclusa” (dopo l'orario di fine) e “Annulla partita”.</p>"+
+    "<p><b>Cancellazioni</b><br>Chi è iscritto può annullare la propria iscrizione: il posto si libera. Se annulli la partita sparisce dall'elenco per tutti.</p>"+
+    "<p><b>Feedback</b><br>Dopo “Segna conclusa” ogni iscritto può lasciare un feedback privato sui compagni, che resta nel suo Google Drive.</p>";
+}
+function sendOrganizerSummary_(match,email,organizerName,lineup) {
+  try {
+    const slots=lineup.map(function(x,i){ const side=i%2===0?"destra":"sinistra", who=x.playerId?esc_(x.name)+(x.invitedAt?" (invitato)":" (tu)"):(x.name?esc_(x.name)+" (ospite)":"libero"); return "Coppia "+(Math.floor(i/2)+1)+", "+side+": "+who; });
+    mail_(email,"🎾 Hai creato una partita di padel: "+match.venue,
+      "<p>Ciao "+esc_(organizerName)+",</p><p>la tua partita è stata creata:</p><p><b>"+esc_(match.venue)+"</b><br>"+esc_(whenText_(match.date))+"</p><p>"+slots.join("<br>")+"</p>"+
+      "<p><a href=\""+esc_(appLink_(match))+"\">Apri la partita</a></p><hr>"+manageInfoHtml_());
+  } catch(err) { console.log("Email organizzatore non inviata: "+err); }
 }
 
 /** Run hourly (see installTriggers): after 24h without an answer, remind (match more than 4 days away) or release the seat and tell the organizer. */
