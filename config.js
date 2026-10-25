@@ -1,6 +1,6 @@
 // Compila questi due valori prima della pubblicazione (nessun segreto: sono valori pubblici).
 window.PADEL_CONFIG = {
-  version: "2026-10-25.3",
+  version: "2026-10-25.4",
   minBackend: "2026-10-25.3",  // backend minimo atteso: sotto, l'amministratore vede un avviso in fondo
   walkthrough: true,  // false = niente guida automatica (resta il pulsante "Come funziona" in fondo)
   googleClientId: "578650428555-5dkcr6quqtbh6q2do9s0e6vht47pq0tv.apps.googleusercontent.com",  // OAuth Client ID (applicazione web)
