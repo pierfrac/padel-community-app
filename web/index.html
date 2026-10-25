@@ -39,6 +39,7 @@ dialog.info{border:0;border-radius:18px;max-width:min(520px,calc(100% - 28px));p
 .brand{display:flex;align-items:center;gap:10px}.brand img{border-radius:9px}
 
 /* ===== Cosmic theme ===== */
+.rsvp{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}.rsvp input{margin:6px 0}.rsvp .rowbuttons button{margin-top:6px}.rsvpok{font-weight:700;color:#2c7a00}.shresp{font-size:14px;margin:2px 0 0 4px}
 .sharewho{margin-bottom:8px}.sharewho label{margin-top:0}.sharewho button{margin-top:8px}.sharestat{margin-top:12px;padding:10px 12px;background:#f4f1ff;border-radius:14px}.shline{padding:5px 0;border-top:1px dashed var(--line);font-size:14px}.shline:first-of-type{border-top:0}.shline button{padding:5px 12px;margin:0 0 0 6px}
 .fbitem{padding:6px 0;border-top:1px dashed var(--line)}.fbitem p{margin:2px 0 0;font-style:italic}
 .adminbox{background:#fff;border-radius:18px;padding:14px 16px;margin-top:14px;border:2px dashed #c0392b55}.adminbox[hidden]{display:none}.adminbox p{margin:2px 0}
@@ -126,7 +127,7 @@ dialog.info{border-radius:22px}dialog.info::backdrop{background:rgba(8,4,40,.65)
 <div class="rowbuttons"><button id="resetCancel" class="secondary" type="button">Annulla</button><button id="resetGo" class="danger" type="button">Cancella tutto</button></div><div id="resetMsg" class="msg" role="status"></div></dialog>
 <dialog id="manageInfo" class="info" aria-labelledby="miTitle"><h3 id="miTitle">Inviti, cancellazione e gestione</h3>
 <p><b>📩 Inviti</b><br>Chi inviti riceve un'email e un posto riservato: anche se non è ancora nell'app basta scrivere la sua email nel posto, accederà con Google (anche con un account diverso: il link riconosce l'invito, non serve una Gmail). Se non risponde entro 24 ore: con la partita a più di 4 giorni gli arriva un promemoria; con la partita entro 4 giorni l'invito viene annullato, il posto torna libero e tu ricevi un avviso via email.</p>
-<p><b>🔗 Link fuori dall'app</b><br>Quando condividi su WhatsApp o in altri modi, scrivi il nome della persona: crei un link personale e nella partita vedi se l'ha aperto, anche prima che risponda. Chi lo apre vede un avviso che l'invito è tracciato.</p>
+<p><b>🔗 Link fuori dall'app</b><br>Quando condividi su WhatsApp o in altri modi puoi creare un link per una persona (vedi se lo apre) o per una chat o gruppo (vedi quanti lo aprono e chi risponde «Ci sono», anche senza accedere). Chi lo apre vede un avviso che il link è tracciato.</p>
 <p><b>✏️ Gestione</b><br>Dalla scheda della partita puoi usare “Modifica formazione” (cambia i posti, ma non chi è già iscritto), “Segna conclusa” (dopo l'orario di fine) e “Annulla partita”.</p>
 <p><b>❌ Cancellazioni</b><br>Chi è iscritto può annullare la propria iscrizione: il posto si libera. Se annulli la partita sparisce dall'elenco per tutti.</p>
 <p><b>⭐ Feedback</b><br>Dopo “Segna conclusa” ogni iscritto può lasciare un feedback privato sui compagni, che resta nel suo Google Drive.</p>
@@ -144,7 +145,7 @@ function setBusy(d){busyCount=Math.max(0,busyCount+d);$("busy").style.display=bu
 function server(method,arg,ok,bad){if(!idToken){bad({message:"Accedi con Google prima di continuare."});return}if(!API_URL){bad({message:"Configurazione incompleta: manca apiUrl in config.js."});return}
  if((method==="registerForMatch"||method==="createMatch")&&!data.me){setMessage("matchesMsg","Prima salva il tuo profilo: bastano nome, livello e lato.");showTab("profile");$("profileForm").scrollIntoView({behavior:"smooth",block:"center"});bad({message:"Prima salva il tuo profilo: bastano nome, livello e lato."});return;}
  setBusy(1);const done=f=>x=>{setBusy(-1);f(x)};ok=done(ok);bad=done(bad);
- fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({method:method,idToken:idToken,arg:arg,inviteToken:inviteToken})}).then(r=>r.text().then(t=>{let j;try{j=JSON.parse(t)}catch(e){throw new Error("risposta non valida (HTTP "+r.status+")")}return j})).then(j=>j.ok?ok(j.result):bad({message:j.error||"Errore"})).catch(e=>bad({message:"Server non raggiungibile ("+(e&&e.message||e)+"). Riprova tra qualche secondo."}));}
+ fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({method:method,idToken:idToken,arg:arg,inviteToken:inviteToken,device:deviceId()})}).then(r=>r.text().then(t=>{let j;try{j=JSON.parse(t)}catch(e){throw new Error("risposta non valida (HTTP "+r.status+")")}return j})).then(j=>j.ok?ok(j.result):bad({message:j.error||"Errore"})).catch(e=>bad({message:"Server non raggiungibile ("+(e&&e.message||e)+"). Riprova tra qualche secondo."}));}
 function setMessage(id,text){$(id).textContent=text||"";}
 function initGoogle(){if(!GOOGLE_CLIENT_ID){setMessage("authMessage","Configurazione incompleta: il proprietario deve impostare GOOGLE_CLIENT_ID nelle Proprietà script.");return;}
  const start=()=>{if(!window.google||!google.accounts||!google.accounts.id){setTimeout(start,200);return;}
@@ -156,19 +157,26 @@ let inviteToken=new URLSearchParams(location.search).get("t")||"";
 function clearInviteToken(){inviteToken="";try{const u=new URL(location.href);u.searchParams.delete("t");history.replaceState(null,"",u.pathname+u.search);}catch(e){}}
 let focusMatch=new URLSearchParams(location.search).get("match")||"";
 function shareUrl(m){const u=new URL(location.href);u.search="";u.hash="";u.searchParams.set("match",m.matchId);u.searchParams.set("v",m.venue);u.searchParams.set("d",m.dateTime);return u.toString();}
-function shareText(m,url,label){const d=new Date(m.dateTime);return (label?"Ciao "+label+"! ":"")+"🎾 Sei invitato a una partita di padel!\n"+m.venue+" · "+(isNaN(d.getTime())?"data da definire":d.toLocaleString("it-IT"))+"\nOccupa il tuo posto (ce ne sono 4): "+url;}
+function shareText(m,url,label,kind){const d=new Date(m.dateTime),when=m.venue+" · "+(isNaN(d.getTime())?"data da definire":d.toLocaleString("it-IT"));if(kind==="group")return "🎾 Chi ha voglia di giocare a padel?\n"+when+"\nDimmi se ci sei, basta un tocco: "+url;return (label?"Ciao "+label+"! ":"")+"🎾 Sei invitato a una partita di padel!\n"+when+"\nOccupa il tuo posto (ce ne sono 4): "+url;}
 function deviceId(){let id="";try{id=localStorage.getItem("padelDevice")||"";}catch(e){}if(!id){const c=document.cookie.match(/(?:^|; )padelDevice=([^;]+)/);id=c?c[1]:"";}if(!id)id=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():String(Math.random()).slice(2)+Date.now();try{localStorage.setItem("padelDevice",id);}catch(e){}try{document.cookie="padelDevice="+id+"; max-age=31536000; path=/; SameSite=Lax; Secure";}catch(e){}return id;}
-function publicCall(method,arg){return fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({method:method,arg:arg})}).then(r=>r.json()).then(j=>j.ok?j.result:Promise.reject(new Error(j.error||"Errore")));}
+function publicCall(method,arg){return fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({method:method,arg:arg,device:deviceId()})}).then(r=>r.json()).then(j=>j.ok?j.result:Promise.reject(new Error(j.error||"Errore")));}
+function showRsvp(r){if(user)return;let box=$("rsvp");if(!box){box=el("div","rsvp");box.id="rsvp";$("invite").append(box);}
+ const ans={yes:"🙋 Ci sono!",maybe:"🤔 Forse",no:"🙅 Non posso"};let saved="";try{saved=localStorage.getItem("padelName")||"";}catch(e){}
+ function done(a,name){box.replaceChildren(el("p","rsvpok","✓ Risposta inviata: "+ans[a]+" ("+name+"). Per prenotare il posto accedi con Google qui sotto."));const ch=el("button","secondary","Cambia risposta");ch.type="button";ch.onclick=form;box.append(ch);}
+ function form(){box.replaceChildren(el("p",null,"Ci sei? Scrivi il tuo nome e rispondi: chi ha mandato il link vede subito chi vuole giocare."));const inp=el("input"),row=el("div","rowbuttons"),msg=el("div","msg");inp.maxLength=40;inp.placeholder="Il tuo nome";inp.autocomplete="name";inp.value=(r.mine&&r.mine.name)||saved;
+  ["yes","maybe","no"].forEach(a=>{const b=el("button",a==="yes"?null:"secondary",ans[a]);b.type="button";b.onclick=()=>{const n=inp.value.trim();if(n.length<2){msg.textContent="Scrivi il tuo nome.";return;}b.disabled=true;publicCall("respondToLink",{token:inviteToken,device:deviceId(),name:n,answer:a}).then(()=>{try{localStorage.setItem("padelName",n);}catch(e){}done(a,n);}).catch(e=>{b.disabled=false;msg.textContent=e.message||"Errore";});};row.append(b);});box.append(inp,row,msg);}
+ if(r.mine&&r.mine.answer)done(r.mine.answer,r.mine.name);else form();}
 function trackInviteOpen(){if(!inviteToken||!API_URL)return;let done="";try{done=sessionStorage.getItem("padelOpened")||"";}catch(e){}if(done===inviteToken)return;
- publicCall("trackOpen",{token:inviteToken,device:deviceId()}).then(r=>{try{sessionStorage.setItem("padelOpened",inviteToken);}catch(e){}if(!r||!r.valid)return;$("inviteTitle").textContent="🎾 "+(r.label?"Ciao "+r.label+"! ":"")+(r.organizer?r.organizer+" ti ha invitato":"Sei stato invitato")+" a una partita di padel!";$("inviteBody").textContent=$("inviteBody").textContent+" Chi ti ha invitato vede se hai aperto questo link.";$("invite").hidden=false;}).catch(()=>{});}
+ publicCall("trackOpen",{token:inviteToken,device:deviceId()}).then(r=>{try{sessionStorage.setItem("padelOpened",inviteToken);}catch(e){}if(!r||!r.valid)return;$("inviteTitle").textContent="🎾 "+((r.label&&r.shareKind!=="group")?"Ciao "+r.label+"! ":"")+(r.organizer?r.organizer+" ti ha invitato":"Sei stato invitato")+" a una partita di padel!";$("inviteBody").textContent=$("inviteBody").textContent+" Chi ti ha invitato vede se hai aperto questo link.";$("invite").hidden=false;if(r.shareKind==="group")showRsvp(r);}).catch(()=>{});}
 function initInvite(){const q=new URLSearchParams(location.search);if(!q.get("match"))return;const v=(q.get("v")||"Partita").slice(0,120);const d=new Date(q.get("d")||"");$("inviteTitle").textContent="🎾 Sei stato invitato a una partita di padel!";$("inviteBody").textContent=v+(isNaN(d.getTime())?"":" · "+d.toLocaleString("it-IT"))+" — accedi con Google per vedere i dettagli e iscriverti.";$("invite").hidden=false;trackInviteOpen();}
 function toggleShare(m,item,opts){const old=item.querySelector(".sharebox");if(old){old.remove();return;}
- const box=el("div","sharebox");let url=shareUrl(m),label="";
+ const box=el("div","sharebox");let url=shareUrl(m),label="",kind="";
  if(opts&&opts.headline)box.append(el("strong","sharehead",opts.headline));
- const who=el("div","sharewho"),inp=el("input"),mk=el("button","secondary","Crea link personale"),st=el("div","muted small","Scrivi a chi lo mandi: il link sarà solo suo e vedrai se lo apre. Senza nome il link è uguale per tutti e non sai chi lo apre.");
- who.append(el("label",null,"A chi lo mandi? (facoltativo)"),inp,mk,st);inp.maxLength=40;inp.placeholder="Es. Marco";inp.autocomplete="off";mk.type="button";
+ const who=el("div","sharewho"),inp=el("input"),mkP=el("button","secondary","Link per una persona"),mkG=el("button","secondary","Link per una chat o gruppo"),st=el("div","muted small","Scegli come tracciare: per una persona vedi se apre il link; per una chat vedi quanti lo aprono e chi risponde «Ci sono». Senza nome il link è uguale per tutti e non sai chi lo apre.");
+ const mrow=el("div","rowbuttons");mrow.append(mkP,mkG);who.replaceChildren(el("label",null,"Per chi è questo link? (facoltativo)"),inp,mrow,st);
+ inp.maxLength=40;inp.placeholder="Persona (es. Marco) o chat (es. Padel Roma)";inp.autocomplete="off";mkP.type="button";mkG.type="button";
  const row=el("div","rowbuttons"),wa=el("a","btn secondary","WhatsApp"),mail=el("a","btn secondary","Email");[wa,mail].forEach(a=>{a.target="_blank";a.rel="noopener noreferrer";});
- const text=()=>shareText(m,url,label);
+ const text=()=>shareText(m,url,label,kind);
  function sync(){wa.href="https://wa.me/?text="+encodeURIComponent(text());mail.href="mailto:?subject="+encodeURIComponent("Partita di padel · "+m.venue)+"&body="+encodeURIComponent(text());}
  sync();row.append(wa,mail);
  const copy=el("button","secondary","Copia link");copy.onclick=()=>{(navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(()=>{copy.textContent="Copiato!"},()=>{window.prompt("Copia il link:",url)});};row.append(copy);
@@ -176,9 +184,11 @@ function toggleShare(m,item,opts){const old=item.querySelector(".sharebox");if(o
  const qrBtn=el("button","secondary","QR code");qrBtn.onclick=()=>{const o=box.querySelector(".qrcard,.qrmsg");if(o){o.remove();return;}
   if(typeof qrcode==="undefined"){box.append(el("p","muted qrmsg","QR code non disponibile: usa il link."));return;}
   const q=qrcode(0,"M");q.addData(url);q.make();const card=el("div","qrcard"),dd=new Date(m.dateTime),img=el("img");img.alt="QR code per iscriversi alla partita";img.width=200;img.height=200;img.style.display="block";img.src=q.createDataURL(4);
-  card.append(el("h3",null,"🎾 "+(label?"Ciao "+label+"! ":"")+"Sei invitato a una partita di padel!"),el("p",null,m.venue+(isNaN(dd.getTime())?"":" · "+dd.toLocaleString("it-IT"))),img,el("p","cta","Inquadra il QR code con la fotocamera e iscriviti: i posti sono 4."));box.append(card);setTimeout(()=>box.scrollIntoView({behavior:"smooth",block:"center"}),60);};row.append(qrBtn);
- mk.onclick=()=>{const name=inp.value.trim();if(!name){st.textContent="Scrivi il nome della persona.";return;}mk.disabled=true;
-  server("createShareLink",{matchId:m.matchId,label:name},r=>{mk.disabled=false;const u=new URL(shareUrl(m));u.searchParams.set("t",r.token);url=u.toString();label=name;sync();copy.textContent="Copia link";const o=box.querySelector(".qrcard,.qrmsg");if(o)o.remove();st.textContent="✓ Link personale per "+name+": usa i pulsanti qui sotto. Chi lo apre vede un avviso che il link è tracciato. Per un'altra persona scrivi un altro nome.";inp.value="";},e=>{mk.disabled=false;st.textContent=e.message||"Errore";});};
+  card.append(el("h3",null,"🎾 "+(kind==="group"?"Chi ha voglia di giocare?":(label?"Ciao "+label+"! ":"")+"Sei invitato a una partita di padel!")),el("p",null,m.venue+(isNaN(dd.getTime())?"":" · "+dd.toLocaleString("it-IT"))),img,el("p","cta","Inquadra il QR code con la fotocamera e iscriviti: i posti sono 4."));box.append(card);setTimeout(()=>box.scrollIntoView({behavior:"smooth",block:"center"}),60);};row.append(qrBtn);
+ function make(k){const name=inp.value.trim();if(!name){st.textContent=k==="group"?"Scrivi il nome della chat o del gruppo.":"Scrivi il nome della persona.";return;}mkP.disabled=mkG.disabled=true;
+  server("createShareLink",{matchId:m.matchId,label:name,kind:k},r=>{mkP.disabled=mkG.disabled=false;const u=new URL(shareUrl(m));u.searchParams.set("t",r.token);url=u.toString();label=name;kind=k;sync();copy.textContent="Copia link";const o=box.querySelector(".qrcard,.qrmsg");if(o)o.remove();
+   st.textContent=k==="group"?"✓ Link per la chat «"+name+"»: usa i pulsanti qui sotto. Chi lo apre può rispondere «Ci sono» e tu vedi i nomi nella partita.":"✓ Link personale per "+name+": usa i pulsanti qui sotto. Chi lo apre vede un avviso che il link è tracciato. Per un'altra persona scrivi un altro nome.";inp.value="";},e=>{mkP.disabled=mkG.disabled=false;st.textContent=e.message||"Errore";});}
+ mkP.onclick=()=>make("personal");mkG.onclick=()=>make("group");
  box.append(who,row);item.append(box);setTimeout(()=>box.scrollIntoView({behavior:"smooth",block:"center"}),60);}
 function calParts(m){const st=new Date(m.dateTime);if(isNaN(st.getTime()))return null;const en=new Date(st.getTime()+90*60000);const f=d=>d.toISOString().replace(/[-:]/g,"").replace(/\.\d+Z$/,"Z");return {s:f(st),e:f(en),title:"Padel · "+m.venue,details:(m.notes?m.notes+"\n\n":"")+"Partita organizzata con Padel Community."};}
 function googleCalUrl(m){const c=calParts(m);if(!c)return "";return "https://calendar.google.com/calendar/render?action=TEMPLATE&text="+encodeURIComponent(c.title)+"&dates="+c.s+"/"+c.e+"&location="+encodeURIComponent(m.venue)+"&details="+encodeURIComponent(c.details);}
@@ -210,7 +220,7 @@ function avatar(id){const p=data.players.find(x=>x.playerId===id);const name=(p&
 let tabInit=false;
 function showTab(name){document.querySelectorAll(".tabpane").forEach(e=>{e.hidden=e.id!=="tab-"+name;});document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.tab===name;b.classList.toggle("on",on);b.setAttribute("aria-selected",on?"true":"false");});window.scrollTo({top:0});}
 document.querySelectorAll("#tabs button").forEach(b=>{b.onclick=()=>showTab(b.dataset.tab);});
-function enterApp(){const h=$("hero");h.classList.add("in");$("loggedText").textContent="Accesso effettuato · "+(googleName?googleName+" · ":"")+((user&&user.email)||"");}
+function enterApp(){const rv=$("rsvp");if(rv)rv.hidden=true;const h=$("hero");h.classList.add("in");$("loggedText").textContent="Accesso effettuato · "+(googleName?googleName+" · ":"")+((user&&user.email)||"");}
 const sideLbl={right:"destra",left:"sinistra",indifferent:"indifferente"};
 function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
 const sideLtr={right:"D",left:"S",indifferent:"I"};
@@ -317,11 +327,19 @@ function matchCard(m){
 }
  body.append(who);
  if(m.shares&&m.shares.length){const sb=el("div","sharestat");sb.append(el("strong",null,"🔗 Link mandati fuori dall'app"));
-  m.shares.forEach(sh=>{const line=el("div","shline"),reg=sh.playerId&&data.registrations.some(r=>r.matchId===m.matchId&&r.playerId===sh.playerId),when=sh.lastOpenAt?new Date(sh.lastOpenAt).toLocaleString("it-IT",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"";
-   let t;if(sh.playerId)t=(reg?"✓ iscritto: ":"👤 ha fatto l'accesso: ")+(sh.who||"un giocatore");else if(sh.opens>0)t="👀 aperto "+sh.opens+(sh.opens===1?" volta":" volte")+(when?", ultima "+when:"");else t="non ancora aperto";
-   if(sh.devices>1)t+=" · ⚠ da "+sh.devices+" dispositivi (inoltrato?)";
-   line.append(el("strong",null,sh.label),el("span","muted small"," · "+t));
-   if(sh.mine&&sh.token){const c=el("button","secondary","Copia link");c.type="button";c.onclick=()=>{const u=new URL(shareUrl(m));u.searchParams.set("t",sh.token);(navigator.clipboard?navigator.clipboard.writeText(u.toString()):Promise.reject()).then(()=>{c.textContent="Copiato!"},()=>window.prompt("Copia il link:",u.toString()));};line.append(" ",c);}
+  const copyBtn=sh=>{const c=el("button","secondary","Copia link");c.type="button";c.onclick=()=>{const u=new URL(shareUrl(m));u.searchParams.set("t",sh.token);(navigator.clipboard?navigator.clipboard.writeText(u.toString()):Promise.reject()).then(()=>{c.textContent="Copiato!"},()=>window.prompt("Copia il link:",u.toString()));};return c;};
+  const nameOf2=x=>(x.name||x.who||"un giocatore")+(x.playerId&&data.registrations.some(r=>r.matchId===m.matchId&&r.playerId===x.playerId)?" ✓":"");
+  m.shares.forEach(sh=>{const line=el("div","shline"),when=sh.lastOpenAt?new Date(sh.lastOpenAt).toLocaleString("it-IT",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"";
+   if(sh.kind==="group"){const R=sh.responses||[],yes=R.filter(x=>x.answer==="yes"),may=R.filter(x=>x.answer==="maybe"),no=R.filter(x=>x.answer==="no"),vis=R.filter(x=>!x.answer&&x.playerId);
+    line.append(el("strong",null,"💬 "+sh.label),el("span","muted small"," · "+(sh.opens?"👀 aperto "+sh.opens+(sh.opens===1?" volta":" volte")+(sh.devices?" da "+sh.devices+(sh.devices===1?" dispositivo":" dispositivi"):"")+(when?", ultima "+when:""):"non ancora aperto")));
+    if(sh.mine&&sh.token)line.append(" ",copyBtn(sh));
+    const add=(icon,txt,list)=>{if(list.length)line.append(el("div","shresp",icon+" "+txt+": "+list.map(nameOf2).join(", ")));};
+    add("🙋","Ci sono",yes);add("🤔","Forse",may);add("🙅","Non possono",no);add("👤","Hanno fatto l'accesso",vis);
+    if(!R.length)line.append(el("div","muted small","Nessuna risposta ancora: i nomi compaiono qui quando qualcuno risponde «Ci sono»."));
+   }else{const reg=sh.playerId&&data.registrations.some(r=>r.matchId===m.matchId&&r.playerId===sh.playerId);
+    let t;if(sh.playerId)t=(reg?"✓ iscritto: ":"👤 ha fatto l'accesso: ")+(sh.who||"un giocatore");else if(sh.opens>0)t="👀 aperto "+sh.opens+(sh.opens===1?" volta":" volte")+(when?", ultima "+when:"");else t="non ancora aperto";
+    if(sh.devices>1)t+=" · ⚠ da "+sh.devices+" dispositivi (inoltrato?)";
+    line.append(el("strong",null,sh.label),el("span","muted small"," · "+t));if(sh.mine&&sh.token)line.append(" ",copyBtn(sh));}
    sb.append(line);});body.append(sb);}
  const fail=e=>setMessage("matchesMsg",e.message||"Errore"),okRefresh=r=>{setMessage("matchesMsg",r.message);refreshData();};
  const btns=el("div","rowbuttons");

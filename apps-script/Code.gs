@@ -7,7 +7,7 @@ const HEADERS = {
   Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt","photoUrl"],
   Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId","lineup"],
   Registrations: ["registrationId","matchId","playerId","status","createdAt","partnerId"],
-  Shares: ["shareId","matchId","token","label","createdBy","createdAt","openedAt","lastOpenAt","opens","devices","playerId","claimedAt"],
+  Shares: ["shareId","matchId","token","label","createdBy","createdAt","openedAt","lastOpenAt","opens","devices","playerId","claimedAt","kind","responses"],
   FeedbackPrivate: ["DO_NOT_USE"]
 };
 
@@ -16,16 +16,18 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-25.1";
-const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData","lookupEmail","createShareLink","trackOpen"];
+const BACKEND_VERSION = "2026-10-25.2";
+const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData","lookupEmail","createShareLink","trackOpen","respondToLink"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 var CURRENT_INVITE_TOKEN = "";
+var CURRENT_DEVICE = "";
 function doPost(e) {
   let out;
   try {
     const req = JSON.parse(e.postData.contents);
     CURRENT_INVITE_TOKEN = String(req.inviteToken || "").slice(0,80);
+    CURRENT_DEVICE = String(req.device || "").slice(0,10);
     if (req.method === "version") return ContentService.createTextOutput(JSON.stringify({ok:true,version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
     if (API_METHODS.indexOf(req.method) < 0) throw new Error("Operazione non valida.");
     out = {ok:true, result:this[req.method](req.idToken, req.arg)};
@@ -316,20 +318,20 @@ function publicLineup_(lu,user,createdBy) {
 function createShareLink(idToken,input) {
   const user=verifyUser_(idToken); input=input||{};
   requireProfile_(user);
-  const matchId=clean_(input.matchId,80), label=clean_(input.label,40);
-  if(!label) throw new Error("Scrivi il nome della persona a cui mandi il link.");
+  const matchId=clean_(input.matchId,80), label=clean_(input.label,40), kind=input.kind==="group"?"group":"personal";
+  if(!label) throw new Error(kind==="group"?"Scrivi il nome della chat o del gruppo.":"Scrivi il nome della persona a cui mandi il link.");
   const m=readRows_("Matches").find(r=>String(r.matchId)===matchId&&String(r.status)!=="cancelled");
   if(!m) throw new Error("Partita non trovata.");
   let rows; try { rows=readRows_("Shares"); } catch(e) { throw new Error("Aggiorna il foglio: esegui setupPadelCommunity."); }
   if(rows.filter(r=>String(r.matchId)===matchId&&String(r.createdBy)===user.playerId).length>=40) throw new Error("Hai già creato troppi link per questa partita.");
   const id=Utilities.getUuid(), token=Utilities.getUuid();
-  sheet_("Shares").appendRow([id,matchId,token,label,user.playerId,new Date(),"","",0,"[]","",""]);
-  return {shareId:id,token:token};
+  sheet_("Shares").appendRow([id,matchId,token,label,user.playerId,new Date(),"","",0,"[]","","",kind,"[]"]);
+  return {shareId:id,token:token,kind:kind};
 }
 /** Public (no login): records that a link was opened, with an anonymous device id, so the sharer can see who read it. */
 function trackOpen(idToken,input) {
   input=input||{};
-  const token=clean_(input.token,80), device=clean_(input.device,60);
+  const token=clean_(input.token,80), device=clean_(input.device,60).slice(0,10);
   if(!token) return {valid:false};
   const lock=LockService.getScriptLock();
   lock.waitLock(10000);
@@ -338,11 +340,11 @@ function trackOpen(idToken,input) {
     let row=null; try { row=readRows_("Shares").find(r=>String(r.token)===token); } catch(e) {}
     if(row) {
       const sh=sheet_("Shares"); let devs=[]; try { devs=JSON.parse(String(row.devices||"[]")); } catch(e) {}
-      if(device&&devs.indexOf(device)<0&&devs.length<10) devs.push(device);
+      if(device&&devs.indexOf(device)<0&&devs.length<500) devs.push(device);
       if(!row.openedAt) sh.getRange(row._row,7).setValue(now);
       sh.getRange(row._row,8).setValue(now); sh.getRange(row._row,9).setValue((Number(row.opens)||0)+1); sh.getRange(row._row,10).setValue(JSON.stringify(devs));
-      const org=pm[String(row.createdBy)];
-      return {valid:true,kind:"share",label:String(row.label||""),organizer:org?org.name:""};
+      const org=pm[String(row.createdBy)], resp=parseResponses_(row.responses), mineR=device?resp.find(x=>x.device===device):null;
+      return {valid:true,kind:"share",shareKind:String(row.kind||"personal"),label:String(row.label||""),organizer:org?org.name:"",mine:mineR?{name:mineR.name,answer:mineR.answer}:null};
     }
     const ms=sheet_("Matches");
     const found=readRows_("Matches").find(m=>{ const lu=parseLineup_(m.lineup); return lu&&lu.some(x=>x.token&&x.token===token); });
@@ -359,12 +361,46 @@ function trackOpen(idToken,input) {
     lock.releaseLock();
   }
 }
+function parseResponses_(v) {
+  try { const a=JSON.parse(String(v||"[]")); return Array.isArray(a)?a:[]; } catch(e) { return []; }
+}
+/** Public (no login): someone who opened a shared link says "I'm in" / "maybe" / "no" with a name, so the sharer sees who wants to play. One answer per device. */
+function respondToLink(idToken,input) {
+  input=input||{};
+  const token=clean_(input.token,80), device=clean_(input.device,60).slice(0,10), name=clean_(input.name,40);
+  const answer=["yes","maybe","no"].indexOf(input.answer)>=0?input.answer:"";
+  if(!token||!answer) throw new Error("Risposta non valida.");
+  if(name.length<2) throw new Error("Scrivi il tuo nome (almeno 2 lettere).");
+  const lock=LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    let row=null; try { row=readRows_("Shares").find(r=>String(r.token)===token); } catch(e) {}
+    if(!row) throw new Error("Questo link non è più valido.");
+    const resp=parseResponses_(row.responses);
+    let e=device?resp.find(x=>x.device===device):null;
+    if(!e) { if(resp.length>=300) throw new Error("Troppe risposte per questo link."); e={name:name,answer:answer,at:"",device:device,playerId:""}; resp.push(e); }
+    e.name=name; e.answer=answer; e.at=new Date().toISOString();
+    sheet_("Shares").getRange(row._row,14).setValue(JSON.stringify(resp));
+    return {saved:true,count:resp.filter(x=>x.answer==="yes").length};
+  } finally {
+    lock.releaseLock();
+  }
+}
 /** When a logged-in person arrives with a personal link, remember who they are (the first one only). */
 function claimShare_(user) {
   if(!CURRENT_INVITE_TOKEN) return;
   try {
     const row=readRows_("Shares").find(r=>String(r.token)===CURRENT_INVITE_TOKEN);
-    if(row&&!String(row.playerId||"")&&String(row.createdBy)!==user.playerId) { const sh=sheet_("Shares"); sh.getRange(row._row,11).setValue(user.playerId); sh.getRange(row._row,12).setValue(new Date()); }
+    if(!row||String(row.createdBy)===user.playerId) return;
+    const sh=sheet_("Shares");
+    if(String(row.kind||"personal")==="group") {
+      const resp=parseResponses_(row.responses);
+      if(resp.some(x=>x.playerId===user.playerId)) return;
+      const me=readRows_("Players").find(r=>String(r.playerId)===user.playerId);
+      let e=CURRENT_DEVICE?resp.find(x=>x.device===CURRENT_DEVICE&&!x.playerId):null;
+      if(e) { e.playerId=user.playerId; } else { if(resp.length>=300) return; resp.push({name:me?String(me.displayName||""):"",answer:"",at:new Date().toISOString(),device:CURRENT_DEVICE,playerId:user.playerId}); }
+      sh.getRange(row._row,14).setValue(JSON.stringify(resp));
+    } else if(!String(row.playerId||"")) { sh.getRange(row._row,11).setValue(user.playerId); sh.getRange(row._row,12).setValue(new Date()); }
   } catch(e) {}
 }
 function sharesByMatch_(user,players) {
@@ -374,7 +410,7 @@ function sharesByMatch_(user,players) {
     readRows_("Shares").forEach(function(r){
       let devs=[]; try { devs=JSON.parse(String(r.devices||"[]")); } catch(e) {}
       const mine=String(r.createdBy)===user.playerId, pid=String(r.playerId||"");
-      (out[String(r.matchId)]=out[String(r.matchId)]||[]).push({shareId:String(r.shareId),label:String(r.label||""),mine:mine,token:mine?String(r.token):"",opens:Number(r.opens)||0,openedAt:iso_(r.openedAt),lastOpenAt:iso_(r.lastOpenAt),devices:devs.length,playerId:pid,who:pid?(names[pid]||"un giocatore"):"",createdBy:String(r.createdBy)});
+      (out[String(r.matchId)]=out[String(r.matchId)]||[]).push({shareId:String(r.shareId),label:String(r.label||""),mine:mine,token:mine?String(r.token):"",opens:Number(r.opens)||0,openedAt:iso_(r.openedAt),lastOpenAt:iso_(r.lastOpenAt),devices:devs.length,playerId:pid,who:pid?(names[pid]||"un giocatore"):"",createdBy:String(r.createdBy),kind:String(r.kind||"personal"),responses:parseResponses_(r.responses).map(x=>({name:String(x.name||""),answer:String(x.answer||""),playerId:String(x.playerId||""),who:x.playerId?(names[x.playerId]||""):"",at:String(x.at||"")}))});
     });
   } catch(e) {}
   return out;

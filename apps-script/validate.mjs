@@ -27,6 +27,7 @@ for (const required of [
   "function lookupEmail(idToken,input)",
   "function createShareLink(idToken,input)",
   "function trackOpen(idToken,input)",
+  "function respondToLink(idToken,input)",
   "function installTriggers()"
 ]) assert.ok(gs.includes(required), "Missing backend function: " + required);
 
