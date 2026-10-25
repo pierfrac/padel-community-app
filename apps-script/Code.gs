@@ -8,6 +8,7 @@ const HEADERS = {
   Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId","lineup"],
   Registrations: ["registrationId","matchId","playerId","status","createdAt","partnerId"],
   Shares: ["shareId","matchId","token","label","createdBy","createdAt","openedAt","lastOpenAt","opens","devices","playerId","claimedAt","kind","responses"],
+  Devices: ["deviceId","playerId","firstSeen","lastSeen"],
   FeedbackPrivate: ["DO_NOT_USE"]
 };
 
@@ -16,8 +17,8 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-25.2";
-const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData","lookupEmail","createShareLink","trackOpen","respondToLink"];
+const BACKEND_VERSION = "2026-10-25.3";
+const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 var CURRENT_INVITE_TOKEN = "";
@@ -27,7 +28,7 @@ function doPost(e) {
   try {
     const req = JSON.parse(e.postData.contents);
     CURRENT_INVITE_TOKEN = String(req.inviteToken || "").slice(0,80);
-    CURRENT_DEVICE = String(req.device || "").slice(0,10);
+    CURRENT_DEVICE = String(req.device || "").slice(0,16);
     if (req.method === "version") return ContentService.createTextOutput(JSON.stringify({ok:true,version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
     if (API_METHODS.indexOf(req.method) < 0) throw new Error("Operazione non valida.");
     out = {ok:true, result:this[req.method](req.idToken, req.arg)};
@@ -41,7 +42,7 @@ function setupPadelCommunity() {
   const sid = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
   const ss = sid ? SpreadsheetApp.openById(sid) : SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error("Apri Apps Script dal foglio Google oppure imposta SPREADSHEET_ID nelle Proprietà script.");
-  ["Players","Matches","Registrations","Shares"].forEach(function(name) {
+  ["Players","Matches","Registrations","Shares","Devices"].forEach(function(name) {
     let sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
     if (sh.getLastRow() === 0) {
@@ -70,6 +71,7 @@ function getPublicConfig() {
 function getAppData(idToken) {
   const user = verifyUser_(idToken);
   claimShare_(user);
+  rememberDevice_(user);
   const players = readRows_("Players").filter(r => r.playerId && truthy_(r.active)).map(function(r) {
     return {playerId:String(r.playerId),displayName:String(r.displayName || "Giocatore"),skillLevel:String(r.skillLevel || "Da definire"),preferredSide:String(r.preferredSide || "indifferent"),photoUrl:safePhoto_(r.photoUrl),active:true};
   });
@@ -331,7 +333,7 @@ function createShareLink(idToken,input) {
 /** Public (no login): records that a link was opened, with an anonymous device id, so the sharer can see who read it. */
 function trackOpen(idToken,input) {
   input=input||{};
-  const token=clean_(input.token,80), device=clean_(input.device,60).slice(0,10);
+  const token=clean_(input.token,80), device=clean_(input.device,60).slice(0,16);
   if(!token) return {valid:false};
   const lock=LockService.getScriptLock();
   lock.waitLock(10000);
@@ -343,8 +345,17 @@ function trackOpen(idToken,input) {
       if(device&&devs.indexOf(device)<0&&devs.length<500) devs.push(device);
       if(!row.openedAt) sh.getRange(row._row,7).setValue(now);
       sh.getRange(row._row,8).setValue(now); sh.getRange(row._row,9).setValue((Number(row.opens)||0)+1); sh.getRange(row._row,10).setValue(JSON.stringify(devs));
-      const org=pm[String(row.createdBy)], resp=parseResponses_(row.responses), mineR=device?resp.find(x=>x.device===device):null;
-      return {valid:true,kind:"share",shareKind:String(row.kind||"personal"),label:String(row.label||""),organizer:org?org.name:"",mine:mineR?{name:mineR.name,answer:mineR.answer}:null};
+      const org=pm[String(row.createdBy)], resp=parseResponses_(row.responses), known=knownDevice_(device,pm), isGroup=String(row.kind||"personal")==="group";
+      let mineR=device?resp.find(x=>x.device===device):null;
+      if(known&&known.playerId!==String(row.createdBy)) {
+        if(isGroup) {
+          let e=resp.find(x=>x.playerId===known.playerId)||mineR;
+          if(!e) { if(resp.length<300) { resp.push({name:known.name,answer:"",at:nowIso,device:device,playerId:known.playerId}); sh.getRange(row._row,14).setValue(JSON.stringify(resp)); } }
+          else if(!e.playerId) { e.playerId=known.playerId; sh.getRange(row._row,14).setValue(JSON.stringify(resp)); }
+          mineR=resp.find(x=>x.playerId===known.playerId)||mineR;
+        } else if(!String(row.playerId||"")) { sh.getRange(row._row,11).setValue(known.playerId); sh.getRange(row._row,12).setValue(now); }
+      }
+      return {valid:true,kind:"share",shareKind:isGroup?"group":"personal",label:String(row.label||""),organizer:org?org.name:"",mine:mineR&&mineR.answer?{name:mineR.name,answer:mineR.answer}:null,known:known?{name:known.name}:null};
     }
     const ms=sheet_("Matches");
     const found=readRows_("Matches").find(m=>{ const lu=parseLineup_(m.lineup); return lu&&lu.some(x=>x.token&&x.token===token); });
@@ -354,12 +365,40 @@ function trackOpen(idToken,input) {
       lu[i].opens=(lu[i].opens||0)+1;
       ms.getRange(found._row,9).setValue(JSON.stringify(lu));
       const org=pm[String(found.createdBy)];
-      return {valid:true,kind:"email",label:"",organizer:org?org.name:""};
+      return {valid:true,kind:"email",label:"",organizer:org?org.name:"",known:(function(){ const k=knownDevice_(device,pm); return k?{name:k.name}:null; })()};
     }
     return {valid:false};
   } finally {
     lock.releaseLock();
   }
+}
+/** A device that has logged in once is remembered, so later link opens can recognise the person without a login. */
+function rememberDevice_(user) {
+  if(!CURRENT_DEVICE) return;
+  try {
+    const sh=sheet_("Devices"), r=readRows_("Devices").find(x=>String(x.deviceId)===CURRENT_DEVICE);
+    if(r) { if(String(r.playerId)!==user.playerId) sh.getRange(r._row,2).setValue(user.playerId); sh.getRange(r._row,4).setValue(new Date()); }
+    else sh.appendRow([CURRENT_DEVICE,user.playerId,new Date(),new Date()]);
+  } catch(e) {}
+}
+function knownDevice_(device,pm) {
+  if(!device) return null;
+  try {
+    const r=readRows_("Devices").find(x=>String(x.deviceId)===device); if(!r) return null;
+    const p=pm[String(r.playerId)]; return p?{playerId:String(r.playerId),name:p.name}:null;
+  } catch(e) { return null; }
+}
+/** Public: "this is not me" - the device stops being recognised. */
+function forgetDevice(idToken,input) {
+  const device=clean_((input&&input.device)||"",60).slice(0,16);
+  if(!device) return {forgotten:false};
+  const lock=LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const r=readRows_("Devices").find(x=>String(x.deviceId)===device);
+    if(r) { sheet_("Devices").deleteRows(r._row,1); return {forgotten:true}; }
+    return {forgotten:false};
+  } catch(e) { return {forgotten:false}; } finally { lock.releaseLock(); }
 }
 function parseResponses_(v) {
   try { const a=JSON.parse(String(v||"[]")); return Array.isArray(a)?a:[]; } catch(e) { return []; }
@@ -367,19 +406,20 @@ function parseResponses_(v) {
 /** Public (no login): someone who opened a shared link says "I'm in" / "maybe" / "no" with a name, so the sharer sees who wants to play. One answer per device. */
 function respondToLink(idToken,input) {
   input=input||{};
-  const token=clean_(input.token,80), device=clean_(input.device,60).slice(0,10), name=clean_(input.name,40);
+  const token=clean_(input.token,80), device=clean_(input.device,60).slice(0,16), name=clean_(input.name,40);
   const answer=["yes","maybe","no"].indexOf(input.answer)>=0?input.answer:"";
   if(!token||!answer) throw new Error("Risposta non valida.");
-  if(name.length<2) throw new Error("Scrivi il tuo nome (almeno 2 lettere).");
+  const known=knownDevice_(device,playerMap_());
+  if(!known&&name.length<2) throw new Error("Scrivi il tuo nome (almeno 2 lettere).");
   const lock=LockService.getScriptLock();
   lock.waitLock(10000);
   try {
     let row=null; try { row=readRows_("Shares").find(r=>String(r.token)===token); } catch(e) {}
     if(!row) throw new Error("Questo link non è più valido.");
     const resp=parseResponses_(row.responses);
-    let e=device?resp.find(x=>x.device===device):null;
+    let e=(known?resp.find(x=>x.playerId===known.playerId):null)||(device?resp.find(x=>x.device===device):null);
     if(!e) { if(resp.length>=300) throw new Error("Troppe risposte per questo link."); e={name:name,answer:answer,at:"",device:device,playerId:""}; resp.push(e); }
-    e.name=name; e.answer=answer; e.at=new Date().toISOString();
+    e.name=known?known.name:name; e.answer=answer; e.at=new Date().toISOString(); if(known) { e.playerId=known.playerId; e.device=device; }
     sheet_("Shares").getRange(row._row,14).setValue(JSON.stringify(resp));
     return {saved:true,count:resp.filter(x=>x.answer==="yes").length};
   } finally {
@@ -467,6 +507,7 @@ function resetAllData(idToken,input) {
     }
     let names=["Matches","Registrations"].concat(input.includeProfiles===true?["Players"]:[]);
     try { sheet_("Shares"); names.push("Shares"); } catch(e) {}
+    if(input.includeProfiles===true) { try { sheet_("Devices"); names.push("Devices"); } catch(e) {} }
     const counts={};
     names.forEach(function(name){ const sh=sheet_(name), n=Math.max(0,sh.getLastRow()-1); if(n>0) sh.deleteRows(2,n); counts[name]=n; });
     return {message:"Dati cancellati: "+counts.Matches+" partite, "+counts.Registrations+" iscrizioni"+(input.includeProfiles===true?", "+counts.Players+" profili":"")+(events?", "+events+" eventi del calendario":"")+".",counts:counts};

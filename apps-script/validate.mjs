@@ -28,6 +28,7 @@ for (const required of [
   "function createShareLink(idToken,input)",
   "function trackOpen(idToken,input)",
   "function respondToLink(idToken,input)",
+  "function forgetDevice(idToken,input)",
   "function installTriggers()"
 ]) assert.ok(gs.includes(required), "Missing backend function: " + required);
 
