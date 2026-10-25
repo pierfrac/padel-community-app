@@ -7,6 +7,7 @@ const HEADERS = {
   Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt","photoUrl"],
   Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId","lineup"],
   Registrations: ["registrationId","matchId","playerId","status","createdAt","partnerId"],
+  Shares: ["shareId","matchId","token","label","createdBy","createdAt","openedAt","lastOpenAt","opens","devices","playerId","claimedAt"],
   FeedbackPrivate: ["DO_NOT_USE"]
 };
 
@@ -15,8 +16,8 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-24.9";
-const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData","lookupEmail"];
+const BACKEND_VERSION = "2026-10-25.1";
+const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData","lookupEmail","createShareLink","trackOpen"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 var CURRENT_INVITE_TOKEN = "";
@@ -38,7 +39,7 @@ function setupPadelCommunity() {
   const sid = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
   const ss = sid ? SpreadsheetApp.openById(sid) : SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error("Apri Apps Script dal foglio Google oppure imposta SPREADSHEET_ID nelle Proprietà script.");
-  ["Players","Matches","Registrations"].forEach(function(name) {
+  ["Players","Matches","Registrations","Shares"].forEach(function(name) {
     let sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
     if (sh.getLastRow() === 0) {
@@ -66,6 +67,7 @@ function getPublicConfig() {
 
 function getAppData(idToken) {
   const user = verifyUser_(idToken);
+  claimShare_(user);
   const players = readRows_("Players").filter(r => r.playerId && truthy_(r.active)).map(function(r) {
     return {playerId:String(r.playerId),displayName:String(r.displayName || "Giocatore"),skillLevel:String(r.skillLevel || "Da definire"),preferredSide:String(r.preferredSide || "indifferent"),photoUrl:safePhoto_(r.photoUrl),active:true};
   });
@@ -77,7 +79,8 @@ function getAppData(idToken) {
   });
   const counts = {};
   registrations.forEach(r => counts[r.matchId]=(counts[r.matchId]||0)+1);
-  matches.forEach(m => { m.registeredCount=counts[m.matchId]||0; m.seatsTaken=m.lineup?m.lineup.filter(x=>x.playerId||x.name).length:m.registeredCount; });
+  const sharesBy=sharesByMatch_(user,players);
+  matches.forEach(m => { m.shares=(sharesBy[m.matchId]||[]).filter(sh=>user.isAdmin||m.createdBy===user.playerId||sh.mine); m.registeredCount=counts[m.matchId]||0; m.seatsTaken=m.lineup?m.lineup.filter(x=>x.playerId||x.name).length:m.registeredCount; });
   const mine = players.find(p => p.playerId === user.playerId) || null;
   const inviteStatus=!CURRENT_INVITE_TOKEN?"":(matches.some(m=>m.lineup&&m.lineup.some(x=>x.mine&&!x.playerId))?"ok":"used");
   return {user:{email:user.email,playerId:user.playerId,isAdmin:user.isAdmin},me:mine,players:players,matches:matches,registrations:registrations,inviteStatus:inviteStatus};
@@ -307,12 +310,79 @@ function pickSlot_(lineup,side) {
 function publicLineup_(lu,user,createdBy) {
   if(!lu) return null;
   const owner=user.isAdmin||String(createdBy)===user.playerId;
-  return lu.map(x=>({playerId:x.playerId,name:x.name,emailInvite:!!x.email,mine:!!(x.email&&(x.email===user.email||(CURRENT_INVITE_TOKEN&&x.token===CURRENT_INVITE_TOKEN))),email:owner?x.email:""}));
+  return lu.map(x=>({playerId:x.playerId,name:x.name,emailInvite:!!x.email,mine:!!(x.email&&(x.email===user.email||(CURRENT_INVITE_TOKEN&&x.token===CURRENT_INVITE_TOKEN))),email:owner?x.email:"",openedAt:owner?x.openedAt:"",opens:owner?x.opens:0}));
+}
+/** Personal share link: lets the sharer see who opens it. Members only. */
+function createShareLink(idToken,input) {
+  const user=verifyUser_(idToken); input=input||{};
+  requireProfile_(user);
+  const matchId=clean_(input.matchId,80), label=clean_(input.label,40);
+  if(!label) throw new Error("Scrivi il nome della persona a cui mandi il link.");
+  const m=readRows_("Matches").find(r=>String(r.matchId)===matchId&&String(r.status)!=="cancelled");
+  if(!m) throw new Error("Partita non trovata.");
+  let rows; try { rows=readRows_("Shares"); } catch(e) { throw new Error("Aggiorna il foglio: esegui setupPadelCommunity."); }
+  if(rows.filter(r=>String(r.matchId)===matchId&&String(r.createdBy)===user.playerId).length>=40) throw new Error("Hai già creato troppi link per questa partita.");
+  const id=Utilities.getUuid(), token=Utilities.getUuid();
+  sheet_("Shares").appendRow([id,matchId,token,label,user.playerId,new Date(),"","",0,"[]","",""]);
+  return {shareId:id,token:token};
+}
+/** Public (no login): records that a link was opened, with an anonymous device id, so the sharer can see who read it. */
+function trackOpen(idToken,input) {
+  input=input||{};
+  const token=clean_(input.token,80), device=clean_(input.device,60);
+  if(!token) return {valid:false};
+  const lock=LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const now=new Date(), nowIso=now.toISOString(), pm=playerMap_();
+    let row=null; try { row=readRows_("Shares").find(r=>String(r.token)===token); } catch(e) {}
+    if(row) {
+      const sh=sheet_("Shares"); let devs=[]; try { devs=JSON.parse(String(row.devices||"[]")); } catch(e) {}
+      if(device&&devs.indexOf(device)<0&&devs.length<10) devs.push(device);
+      if(!row.openedAt) sh.getRange(row._row,7).setValue(now);
+      sh.getRange(row._row,8).setValue(now); sh.getRange(row._row,9).setValue((Number(row.opens)||0)+1); sh.getRange(row._row,10).setValue(JSON.stringify(devs));
+      const org=pm[String(row.createdBy)];
+      return {valid:true,kind:"share",label:String(row.label||""),organizer:org?org.name:""};
+    }
+    const ms=sheet_("Matches");
+    const found=readRows_("Matches").find(m=>{ const lu=parseLineup_(m.lineup); return lu&&lu.some(x=>x.token&&x.token===token); });
+    if(found) {
+      const lu=parseLineup_(found.lineup), i=lu.findIndex(x=>x.token===token);
+      if(!lu[i].openedAt) lu[i].openedAt=nowIso;
+      lu[i].opens=(lu[i].opens||0)+1;
+      ms.getRange(found._row,9).setValue(JSON.stringify(lu));
+      const org=pm[String(found.createdBy)];
+      return {valid:true,kind:"email",label:"",organizer:org?org.name:""};
+    }
+    return {valid:false};
+  } finally {
+    lock.releaseLock();
+  }
+}
+/** When a logged-in person arrives with a personal link, remember who they are (the first one only). */
+function claimShare_(user) {
+  if(!CURRENT_INVITE_TOKEN) return;
+  try {
+    const row=readRows_("Shares").find(r=>String(r.token)===CURRENT_INVITE_TOKEN);
+    if(row&&!String(row.playerId||"")&&String(row.createdBy)!==user.playerId) { const sh=sheet_("Shares"); sh.getRange(row._row,11).setValue(user.playerId); sh.getRange(row._row,12).setValue(new Date()); }
+  } catch(e) {}
+}
+function sharesByMatch_(user,players) {
+  const out={};
+  try {
+    const names={}; players.forEach(p=>{ names[p.playerId]=p.displayName; });
+    readRows_("Shares").forEach(function(r){
+      let devs=[]; try { devs=JSON.parse(String(r.devices||"[]")); } catch(e) {}
+      const mine=String(r.createdBy)===user.playerId, pid=String(r.playerId||"");
+      (out[String(r.matchId)]=out[String(r.matchId)]||[]).push({shareId:String(r.shareId),label:String(r.label||""),mine:mine,token:mine?String(r.token):"",opens:Number(r.opens)||0,openedAt:iso_(r.openedAt),lastOpenAt:iso_(r.lastOpenAt),devices:devs.length,playerId:pid,who:pid?(names[pid]||"un giocatore"):"",createdBy:String(r.createdBy)});
+    });
+  } catch(e) {}
+  return out;
 }
 function parseLineup_(v) {
   if(!v) return null;
   try { const a=JSON.parse(String(v)); if(!Array.isArray(a)||a.length!==4) return null;
-    return a.map(x=>({playerId:String((x&&x.playerId)||""),name:String((x&&x.name)||""),invitedAt:String((x&&x.invitedAt)||""),reminded:!!(x&&x.reminded),email:String((x&&x.email)||""),token:String((x&&x.token)||"")})); } catch(e) { return null; }
+    return a.map(x=>({playerId:String((x&&x.playerId)||""),name:String((x&&x.name)||""),invitedAt:String((x&&x.invitedAt)||""),reminded:!!(x&&x.reminded),email:String((x&&x.email)||""),token:String((x&&x.token)||""),openedAt:String((x&&x.openedAt)||""),opens:Number((x&&x.opens)||0)})); } catch(e) { return null; }
 }
 /** Four slots: pair 1 right/left, pair 2 right/left. Members of the community are matched by playerId; free text names are guests. */
 function buildLineup_(raw,owner,ownerProfile,mustKeep,prev) {
@@ -329,7 +399,7 @@ function buildLineup_(raw,owner,ownerProfile,mustKeep,prev) {
     const old=pid&&prev?prev.find(x=>x.playerId===pid):null;
     const slot={playerId:pid,name:name,invitedAt:"",reminded:false,email:email,token:""};
     if(pid&&pid!==owner.playerId) { if(old&&old.invitedAt) { slot.invitedAt=old.invitedAt; slot.reminded=!!old.reminded; } else { slot.invitedAt=new Date().toISOString(); newInvites.push(pid); } }
-    if(!pid&&email) { const oldE=prev?prev.find(x=>x.email===email):null; if(oldE&&oldE.invitedAt) { slot.invitedAt=oldE.invitedAt; slot.reminded=!!oldE.reminded; slot.token=oldE.token||Utilities.getUuid(); } else { slot.invitedAt=new Date().toISOString(); slot.token=Utilities.getUuid(); newEmailInvites.push({email:email,token:slot.token}); } }
+    if(!pid&&email) { const oldE=prev?prev.find(x=>x.email===email):null; if(oldE&&oldE.invitedAt) { slot.invitedAt=oldE.invitedAt; slot.reminded=!!oldE.reminded; slot.token=oldE.token||Utilities.getUuid(); slot.openedAt=oldE.openedAt||""; slot.opens=oldE.opens||0; } else { slot.invitedAt=new Date().toISOString(); slot.token=Utilities.getUuid(); newEmailInvites.push({email:email,token:slot.token}); } }
     out.push(slot);
   }
   if(!seen[owner.playerId]) {
@@ -359,7 +429,8 @@ function resetAllData(idToken,input) {
         if(cal) readRows_("Matches").forEach(function(m){ const id=String(m.calendarEventId||""); if(id) { try { const ev=cal.getEventById(id); if(ev) { ev.deleteEvent(); events++; } } catch(e) {} } });
       } catch(e) {}
     }
-    const names=["Matches","Registrations"].concat(input.includeProfiles===true?["Players"]:[]);
+    let names=["Matches","Registrations"].concat(input.includeProfiles===true?["Players"]:[]);
+    try { sheet_("Shares"); names.push("Shares"); } catch(e) {}
     const counts={};
     names.forEach(function(name){ const sh=sheet_(name), n=Math.max(0,sh.getLastRow()-1); if(n>0) sh.deleteRows(2,n); counts[name]=n; });
     return {message:"Dati cancellati: "+counts.Matches+" partite, "+counts.Registrations+" iscrizioni"+(input.includeProfiles===true?", "+counts.Players+" profili":"")+(events?", "+events+" eventi del calendario":"")+".",counts:counts};
