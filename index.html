@@ -87,7 +87,10 @@ dialog.info{border-radius:22px}dialog.info::backdrop{background:rgba(8,4,40,.65)
 <div><label for="name">Nome visibile</label><input id="name" maxlength="80" required placeholder="Come ti chiami in community?"></div>
 <div><label for="level">Livello</label><select id="level" required><option value="">Seleziona</option><option>Bronze</option><option>Silver</option><option>Silver-Gold</option><option>Gold</option><option>Gold+</option></select></div>
 </div><label for="side">Lato preferito</label><select id="side"><option value="indifferent">Indifferente</option><option value="right">Destra</option><option value="left">Sinistra</option></select>
+<label for="gender">Genere</label><select id="gender" required><option value="">Seleziona</option><option value="male">Maschio</option><option value="female">Femmina</option><option value="other">Altro</option></select>
 <label class="check"><input type="checkbox" id="showPhoto" checked> <span>Mostra la mia foto Google agli altri giocatori<span class="muted small" id="photoNote"></span></span></label>
+<div id="consentBox"><label class="check"><input type="checkbox" id="gdpr" required> <span>Ho letto l'<a href="#" id="privacyLink">informativa privacy</a> e acconsento al trattamento dei miei dati per organizzare le partite.</span></label></div>
+<p class="muted small" id="consentDone" hidden></p>
 <button type="submit">Salva profilo</button></form><div id="profileMsg" class="msg" role="status"></div>
 </section>
 <div class="rowbuttons"><button class="secondary" id="refresh">Aggiorna dati</button><button class="secondary" id="privateDrive">Attiva / aggiorna Drive privato</button><button class="danger" id="signOut">Esci</button></div>
@@ -120,6 +123,16 @@ dialog.info{border-radius:22px}dialog.info::backdrop{background:rgba(8,4,40,.65)
 </div>
 <footer class="muted small" style="padding:18px 4px"><br><button class="secondary" id="howTo" type="button">Come funziona</button><br><span id="versions">Versioni: caricamento…</span></footer>
 </main>
+<dialog id="privacyDlg" class="info" aria-labelledby="pvTitle"><h3 id="pvTitle">Informativa privacy</h3>
+<p class="muted small">Versione del <span id="pvDate">26 ottobre 2026</span> · valida per Padel Community.</p>
+<p><b>Chi tratta i dati.</b> <span id="pvController">Titolare del trattamento: chi organizza questa community (puoi chiedergli ogni informazione).</span></p>
+<p><b>Quali dati.</b> Nome visibile, email dell'account Google, livello, lato preferito, genere, foto del profilo Google (solo se scegli di mostrarla), partite a cui partecipi, inviti e risposte ai link, e un identificativo anonimo del dispositivo (cookie) che serve a riconoscerti quando apri un link. I feedback privati sui compagni restano nel tuo Google Drive: l'organizzatore non li riceve.</p>
+<p><b>Perché.</b> Per organizzare le partite, invitare i giocatori, calcolare la compatibilità e mandarti email sulle partite. Non usiamo i dati per pubblicità e non li vendiamo.</p>
+<p><b>Base giuridica.</b> Il tuo consenso, che puoi revocare in qualsiasi momento.</p>
+<p><b>Chi li vede.</b> Gli altri giocatori vedono nome, livello, lato e, se vuoi, la foto. Genere, email e consenso non sono mostrati agli altri giocatori. I dati sono ospitati su servizi Google (Fogli, Apps Script, Drive, Calendar, Gmail) e il sito su GitHub Pages.</p>
+<p><b>Per quanto tempo.</b> Finché la community è attiva o finché non chiedi la cancellazione.</p>
+<p><b>I tuoi diritti.</b> Puoi chiedere accesso, rettifica, cancellazione e portabilità dei dati, revocare il consenso e presentare reclamo al Garante per la protezione dei dati personali. <span id="pvContact">Per esercitarli scrivi a chi ti ha invitato.</span></p>
+<button id="privacyClose" type="button">Ho capito</button></dialog>
 <dialog id="resetDlg" class="info" aria-labelledby="rdTitle"><h3 id="rdTitle">⚠️ Cancella tutti i dati di prova</h3>
 <p>Verranno eliminate <b>tutte le partite e le iscrizioni</b> (e gli eventi nel calendario condiviso, se configurato). <b>Non si può annullare.</b></p>
 <label class="check"><input type="checkbox" id="resetProfiles"> Cancella anche i profili dei giocatori</label>
@@ -144,7 +157,7 @@ const $=id=>document.getElementById(id);
 let busyCount=0;
 function setBusy(d){busyCount=Math.max(0,busyCount+d);$("busy").style.display=busyCount?"block":"none";}
 function server(method,arg,ok,bad){if(!idToken){bad({message:"Accedi con Google prima di continuare."});return}if(!API_URL){bad({message:"Configurazione incompleta: manca apiUrl in config.js."});return}
- if((method==="registerForMatch"||method==="createMatch")&&!data.me){setMessage("matchesMsg","Prima salva il tuo profilo: bastano nome, livello e lato.");showTab("profile");$("profileForm").scrollIntoView({behavior:"smooth",block:"center"});bad({message:"Prima salva il tuo profilo: bastano nome, livello e lato."});return;}
+ if((method==="registerForMatch"||method==="createMatch")&&!(data.me&&data.me.complete!==false)){setMessage("matchesMsg","Prima completa il profilo: nome, livello, lato, genere e informativa privacy.");showTab("profile");$("profileForm").scrollIntoView({behavior:"smooth",block:"center"});bad({message:"Prima completa il profilo: nome, livello, lato, genere e informativa privacy."});return;}
  setBusy(1);const done=f=>x=>{setBusy(-1);f(x)};ok=done(ok);bad=done(bad);
  fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({method:method,idToken:idToken,arg:arg,inviteToken:inviteToken,device:deviceId()})}).then(r=>r.text().then(t=>{let j;try{j=JSON.parse(t)}catch(e){throw new Error("risposta non valida (HTTP "+r.status+")")}return j})).then(j=>j.ok?ok(j.result):bad({message:j.error||"Errore"})).catch(e=>bad({message:"Server non raggiungibile ("+(e&&e.message||e)+"). Riprova tra qualche secondo."}));}
 function setMessage(id,text){$(id).textContent=text||"";}
@@ -153,7 +166,8 @@ function initGoogle(){if(!GOOGLE_CLIENT_ID){setMessage("authMessage","Configuraz
  google.accounts.id.initialize({client_id:GOOGLE_CLIENT_ID,callback:async response=>{idToken=response.credential;try{const p=JSON.parse(atob(idToken.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));user={email:p.email,sub:p.sub};googleName=String(p.name||p.given_name||"").slice(0,80);googlePicture=String(p.picture||"");setMessage("authMessage","Accesso effettuato: "+user.email);$("app").style.display="block";await refreshData();maybeStartTour();}catch(e){setMessage("authMessage","Impossibile leggere il profilo Google.");}}});
  google.accounts.id.renderButton($("googleButton"),{theme:"outline",size:"large",shape:"pill",text:"signin_with",locale:"it"});
  };start();}
-function refreshData(){server("getAppData",null,d=>{data=d;user=d.user;const me=d.me;enterApp();updateVersions();{const has=!!googlePicture||!!(me&&me.photoUrl);$("showPhoto").disabled=!has;$("photoNote").textContent=has?"":" · nessuna foto sul tuo account Google: comparirà l'iniziale";if(!has)$("showPhoto").checked=false;}if(d.inviteStatus==="used")setMessage("matchesMsg","Questo link d'invito è già stato usato (forse da te) o non è più valido. Se non trovi la partita, chiedi a chi ti ha invitato.");$("adminBox").hidden=!(d.user&&d.user.isAdmin);if(!tabInit){tabInit=true;showTab((focusMatch||me)?"matches":"profile");}if(me){$("name").value=me.displayName||"";$("level").value=me.skillLevel||"";$("side").value=me.preferredSide||"indifferent";$("showPhoto").checked=!!me.photoUrl;}else{if(!$("name").value&&googleName)$("name").value=googleName;setMessage("profileMsg","Benvenuto! Controlla il nome, scegli livello e lato e premi “Salva profilo”: ti serve per iscriverti alle partite.");}render();},e=>setMessage("matchesMsg",e.message||"Errore di caricamento"));}
+function refreshData(){server("getAppData",null,d=>{data=d;user=d.user;const me=d.me;enterApp();updateVersions();{const has=!!googlePicture||!!(me&&me.photoUrl);$("showPhoto").disabled=!has;$("photoNote").textContent=has?"":" · nessuna foto sul tuo account Google: comparirà l'iniziale";if(!has)$("showPhoto").checked=false;}if(d.inviteStatus==="used")setMessage("matchesMsg","Questo link d'invito è già stato usato (forse da te) o non è più valido. Se non trovi la partita, chiedi a chi ti ha invitato.");$("adminBox").hidden=!(d.user&&d.user.isAdmin);if(!tabInit){tabInit=true;showTab((focusMatch||me)?"matches":"profile");}consentOk=!!(me&&me.consentOk);updateConsentUI(me);if(me){$("gender").value=me.gender||"";$("name").value=me.displayName||"";$("level").value=me.skillLevel||"";$("side").value=me.preferredSide||"indifferent";$("showPhoto").checked=!!me.photoUrl;}else{if(!$("name").value&&googleName)$("name").value=googleName;setMessage("profileMsg","Benvenuto! Controlla il nome, scegli livello, lato e genere, accetta l'informativa privacy e premi “Salva profilo”: ti serve per iscriverti alle partite.");}render();},e=>setMessage("matchesMsg",e.message||"Errore di caricamento"));}
+let consentOk=false;
 let inviteToken=new URLSearchParams(location.search).get("t")||"";
 function clearInviteToken(){inviteToken="";try{const u=new URL(location.href);u.searchParams.delete("t");history.replaceState(null,"",u.pathname+u.search);}catch(e){}}
 let focusMatch=new URLSearchParams(location.search).get("match")||"";
@@ -380,6 +394,11 @@ function matchCard(m){
 $("resetOpen").onclick=()=>{$("resetConfirm").value="";$("resetProfiles").checked=false;setMessage("resetMsg","");$("resetDlg").showModal();};
 $("resetCancel").onclick=()=>$("resetDlg").close();
 $("resetGo").onclick=()=>{setMessage("resetMsg","");server("resetAllData",{confirm:$("resetConfirm").value,includeProfiles:$("resetProfiles").checked},r=>{$("resetDlg").close();setMessage("driveStatus",r.message);setMessage("matchesMsg",r.message);refreshData();},e=>setMessage("resetMsg",e.message||"Errore"));};
+function fmtDate(iso){const d=new Date(iso);return isNaN(d.getTime())?"":d.toLocaleDateString("it-IT");}
+function updateConsentUI(me){const ok=!!(me&&me.consentOk);$("consentBox").hidden=ok;$("gdpr").required=!ok;const done=$("consentDone");done.hidden=!ok;done.replaceChildren();if(ok){done.append("✓ Informativa privacy accettata il "+fmtDate(me.consentAt)+" · ");const a=el("a",null,"rivedi");a.href="#";a.onclick=e=>{e.preventDefault();openPrivacy();};done.append(a);}
+ if(me&&me.complete===false)setMessage("profileMsg","Per continuare scegli il genere e accetta l'informativa privacy, poi premi «Salva profilo».");}
+function openPrivacy(){const c=window.PADEL_CONFIG||{};if(c.controllerName){$("pvController").textContent="Titolare del trattamento: "+c.controllerName+(c.controllerEmail?" ("+c.controllerEmail+")":"")+".";}if(c.controllerEmail)$("pvContact").textContent="Per esercitarli scrivi a "+c.controllerEmail+".";$("privacyDlg").showModal();}
+$("privacyLink").onclick=e=>{e.preventDefault();openPrivacy();};$("privacyClose").onclick=()=>$("privacyDlg").close();
 function manageInfoSeen(){try{return localStorage.getItem("padelManageInfoSeen")==="1";}catch(e){return false;}}
 function showManageInfo(){const d=$("manageInfo");if(!d.open)d.showModal();}
 $("manageInfoClose").onclick=()=>{$("manageInfo").close();try{localStorage.setItem("padelManageInfoSeen","1");}catch(e){}};
@@ -396,7 +415,7 @@ function render(){const root=$("matches");const openIds=new Set([...root.querySe
  data.matches.forEach(m=>{if(keepNodes[m.matchId]){root.append(keepNodes[m.matchId]);return;}const c=matchCard(m);if(openIds.has(m.matchId))c.open=true;root.append(c);});
  fillClubs();if(createEditor)createEditor.refresh();else buildCreateEditor();renderSuggestions();}
 function fill(el,items,placeholder){const old=el.value;el.replaceChildren();const first=document.createElement("option");first.value="";first.textContent=placeholder;el.append(first);items.forEach(x=>{const o=document.createElement("option");o.value=x.value;o.textContent=x.label;el.append(o)});if(items.some(x=>x.value===old))el.value=old;}
-$("profileForm").onsubmit=e=>{e.preventDefault();server("saveProfile",{displayName:$("name").value,skillLevel:$("level").value,preferredSide:$("side").value,showPhoto:$("showPhoto").checked},r=>{setMessage("profileMsg",r.message);refreshData();},err=>setMessage("profileMsg",err.message||"Errore"));};
+$("profileForm").onsubmit=e=>{e.preventDefault();server("saveProfile",{displayName:$("name").value,skillLevel:$("level").value,preferredSide:$("side").value,showPhoto:$("showPhoto").checked,gender:$("gender").value,gdpr:$("gdpr").checked||consentOk},r=>{setMessage("profileMsg",r.message);refreshData();},err=>setMessage("profileMsg",err.message||"Errore"));};
 $("matchForm").onsubmit=e=>{e.preventDefault();let venue,lineup;try{venue=venueValue();lineup=createEditor.get();}catch(err){setMessage("matchMsg",err.message||"Controlla i dati.");return;}
  server("createMatch",{venue:venue,dateTime:$("dateTime").value,notes:$("notes").value,lineup:lineup},r=>{setMessage("matchMsg","");$("matchForm").reset();createEditor=null;buildCreateEditor();clubReset();pendingShare=(r&&r.matchId)||"";setMessage("matchesMsg","Partita creata! Invita gli altri giocatori da qui sotto.");showTab("matches");refreshData();if(!manageInfoSeen())showManageInfo();},err=>setMessage("matchMsg",err.message||"Errore"));};
 function requestDriveToken(done){if(!window.google||!google.accounts||!google.accounts.oauth2){setDriveMsg("Servizio Google OAuth non caricato. Ricarica la pagina.");return;}
