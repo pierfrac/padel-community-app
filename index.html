@@ -64,7 +64,7 @@ details.match{border:0;border-radius:18px;box-shadow:0 2px 12px rgba(80,40,200,.
 .tabs{background:rgba(14,10,52,.92);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-top:1px solid #ffffff1f}.tabs button{background:none;box-shadow:none;color:#a9a6d6}.tabs button.on{color:var(--lime);box-shadow:inset 0 3px 0 var(--lime)}
 .tour{border-color:var(--green)}.tour-hl{outline-color:var(--lime)}.match.focus{outline:3px solid var(--lime);outline-offset:2px}
 .status{background:rgba(255,255,255,.1);color:#d9d3ff}footer.muted{color:#b9b5e6}footer.muted button{background:rgba(255,255,255,.14);color:#fff;box-shadow:none}
-.pending{box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.sectionhead{margin:18px 4px 6px;font-size:1rem}details.pastbox>summary{cursor:pointer;margin:18px 4px 6px;font-weight:700}.pending{box-shadow:0 4px 14px rgba(0,0,0,.25)}
 .hero.in{background:linear-gradient(120deg,#12b76a,#0aa0a0);box-shadow:0 10px 28px #12b76a55}.hero.in::after{display:none}.hero.in .tick{color:#0aa070}
 dialog.info{border-radius:22px}dialog.info::backdrop{background:rgba(8,4,40,.65)}
 .sugg .sg-b{background:linear-gradient(135deg,#5b2cff,#a23bff)}
@@ -341,7 +341,7 @@ function matchCard(m){
  const item=el("details","match"),d=new Date(m.dateTime);item.dataset.id=m.matchId;
  const when=isNaN(d.getTime())?"Data da definire":d.toLocaleString("it-IT",{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
  const head=el("div","matchhead");head.append(el("strong",null,m.venue),el("span","pill",taken+"/4 posti"));
- const chips=el("div","chips");if(invitedMe)chips.append(el("span","chip warn","📩 Sei invitato: accetta"));if(own)chips.append(el("span","chip ok","✓ Sei iscritto"));if(completed)chips.append(el("span","chip","Conclusa"));else if(taken>=4)chips.append(el("span","chip","Completa"));
+ const chips=el("div","chips");if(invitedMe)chips.append(el("span","chip warn","📩 Sei invitato: accetta"));if(own)chips.append(el("span","chip ok","✓ Sei iscritto"));if(completed)chips.append(el("span","chip","Conclusa"));else if(taken>=4)chips.append(el("span","chip","Al completo"));
  const sum=el("summary");sum.append(head,el("p","muted when","📅 "+when),chips);
  const body=el("div","matchbody");if(m.notes)body.append(el("p","muted","📝 "+m.notes));
  let who;
@@ -412,7 +412,18 @@ function render(){const root=$("matches");const openIds=new Set([...root.querySe
  const inv=data.matches.filter(m=>m.lineup&&m.status!=="completed"&&!data.registrations.some(r=>r.matchId===m.matchId&&r.playerId===user.playerId)&&m.lineup.some(x=>x.playerId===user.playerId||x.mine)).length;
  if(inv)root.append(el("p","pending","📩 Hai "+inv+(inv===1?" invito":" inviti")+" da accettare: apri la partita e premi “Accetta invito”."));
  if(!data.matches.length)root.append(document.createTextNode("Non ci sono ancora partite aperte. Proponine una nella scheda Crea partita."));
- data.matches.forEach(m=>{if(keepNodes[m.matchId]){root.append(keepNodes[m.matchId]);return;}const c=matchCard(m);if(openIds.has(m.matchId))c.open=true;root.append(c);});
+ const pastWasOpen=!!root.querySelector("details.pastbox[open]");
+ const groups={open:[],confirmed:[],past:[]},now=Date.now();
+ data.matches.forEach(m=>{const t=new Date(m.dateTime).getTime(),regs=data.registrations.filter(r=>r.matchId===m.matchId);
+  if(m.status==="completed"||(!isNaN(t)&&t+90*60000<now))groups.past.push(m);
+  else if(m.lineup?m.lineup.every(x=>x.playerId?regs.some(r=>r.playerId===x.playerId):(x.name&&!x.email)):m.registeredCount>=4)groups.confirmed.push(m);
+  else groups.open.push(m);});
+ const byDate=(a,b)=>new Date(a.dateTime)-new Date(b.dateTime);groups.open.sort(byDate);groups.confirmed.sort(byDate);groups.past.sort((a,b)=>byDate(b,a));
+ const addCard=(parent,m)=>{if(keepNodes[m.matchId]){parent.append(keepNodes[m.matchId]);return;}const c=matchCard(m);if(openIds.has(m.matchId))c.open=true;parent.append(c);};
+ const section=(title,list,empty)=>{root.append(el("h3","sectionhead",title+" ("+list.length+")"));if(!list.length&&empty)root.append(el("p","muted small",empty));list.forEach(m=>addCard(root,m));};
+ section("Partite aperte",groups.open,"Nessuna partita con posti da riempire.");
+ section("Partite confermate",groups.confirmed,"Nessuna partita ancora al completo.");
+ if(groups.past.length){const pb=el("details","pastbox");pb.open=pastWasOpen;pb.append(el("summary","sectionhead","Partite passate ("+groups.past.length+")"));groups.past.forEach(m=>addCard(pb,m));root.append(pb);}
  fillClubs();if(createEditor)createEditor.refresh();else buildCreateEditor();renderSuggestions();}
 function fill(el,items,placeholder){const old=el.value;el.replaceChildren();const first=document.createElement("option");first.value="";first.textContent=placeholder;el.append(first);items.forEach(x=>{const o=document.createElement("option");o.value=x.value;o.textContent=x.label;el.append(o)});if(items.some(x=>x.value===old))el.value=old;}
 $("profileForm").onsubmit=e=>{e.preventDefault();server("saveProfile",{displayName:$("name").value,skillLevel:$("level").value,preferredSide:$("side").value,showPhoto:$("showPhoto").checked,gender:$("gender").value,gdpr:$("gdpr").checked||consentOk},r=>{setMessage("profileMsg",r.message);refreshData();},err=>setMessage("profileMsg",err.message||"Errore"));};
