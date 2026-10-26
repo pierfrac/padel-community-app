@@ -22,6 +22,7 @@ for (const required of [
   "function cancelMatch(idToken,input)",
   "function setPartner(idToken,input)",
   "function setLineup(idToken,input)",
+  "function setCourt(idToken,input)",
   "function processInvites()",
   "function resetAllData(idToken,input)",
   "function lookupEmail(idToken,input)",

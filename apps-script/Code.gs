@@ -5,7 +5,7 @@
  */
 const HEADERS = {
   Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt","photoUrl","gender","consentAt","consentVersion"],
-  Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId","lineup"],
+  Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId","lineup","court"],
   Registrations: ["registrationId","matchId","playerId","status","createdAt","partnerId"],
   Shares: ["shareId","matchId","token","label","createdBy","createdAt","openedAt","lastOpenAt","opens","devices","playerId","claimedAt","kind","responses"],
   Devices: ["deviceId","playerId","firstSeen","lastSeen"],
@@ -20,13 +20,13 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.7";
+const BACKEND_VERSION = "2026-10-26.8";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
 const DEFAULT_COMMUNITY = "Telespadel";
 const GENDERS = ["male","female","other"];
-const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
+const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","setCourt","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 var CURRENT_INVITE_TOKEN = "";
@@ -196,7 +196,7 @@ function getAppData(idToken) {
     return {registrationId:String(r.registrationId),matchId:String(r.matchId),playerId:String(r.playerId),status:String(r.status),partnerId:String(r.partnerId || "")};
   });
   const matches = readRows_("Matches").filter(r => r.matchId && String(r.status) !== "cancelled").map(function(r) {
-    return {matchId:String(r.matchId),dateTime:iso_(r.dateTime),venue:String(r.venue || ""),status:String(r.status || "open"),notes:String(r.notes || ""),createdBy:String(r.createdBy || ""),lineup:publicLineup_(parseLineup_(r.lineup),user,r.createdBy),registeredCount:0};
+    return {matchId:String(r.matchId),dateTime:iso_(r.dateTime),venue:String(r.venue || ""),status:String(r.status || "open"),notes:String(r.notes || ""),court:String(r.court || ""),createdBy:String(r.createdBy || ""),lineup:publicLineup_(parseLineup_(r.lineup),user,r.createdBy),registeredCount:0};
   });
   const counts = {};
   registrations.forEach(r => counts[r.matchId]=(counts[r.matchId]||0)+1);
@@ -235,7 +235,7 @@ function saveProfile(idToken, input) {
 function createMatch(idToken,input) {
   const user=verifyUser_(idToken); input=input||{};
   const profile=requireProfile_(user);
-  const venue=clean_(input.venue,120), dateText=clean_(input.dateTime,80), notes=clean_(input.notes,500);
+  const venue=clean_(input.venue,120), dateText=clean_(input.dateTime,80), notes=clean_(input.notes,500), court=clean_(input.court,10);
   if(!venue||!dateText) throw new Error("Inserisci campo e data/ora.");
   const date=new Date(dateText); if(isNaN(date.getTime())||date.getTime()<Date.now()-60000) throw new Error("Scegli una data futura valida.");
   const lineup=buildLineup_(input.lineup,user,profile,null,null);
@@ -246,15 +246,15 @@ function createMatch(idToken,input) {
     try {
       const calendar=CalendarApp.getCalendarById(calendarId);
       if(!calendar) throw new Error("Calendario non accessibile: verifica CALENDAR_ID e permessi.");
-      const event=calendar.createEvent("Padel Community · "+venue,date,new Date(date.getTime()+90*60000),{description:"Partita proposta da "+user.email+(notes?"\n\n"+notes:"")});
+      const event=calendar.createEvent("Padel Community · "+venue+(court?" · campo "+court:""),date,new Date(date.getTime()+90*60000),{description:"Partita proposta da "+user.email+(notes?"\n\n"+notes:"")});
       eventId=event.getId();
     } catch(err) { throw new Error("Partita non salvata: errore Calendar. "+err.message); }
   }
-  sheet_("Matches").appendRow([id,date,venue,user.playerId,"open",notes,created,eventId,JSON.stringify(lineup)]);
+  sheet_("Matches").appendRow([id,date,venue,user.playerId,"open",notes,created,eventId,JSON.stringify(lineup),court]);
   sheet_("Registrations").appendRow([Utilities.getUuid(),id,user.playerId,"joined",created,""]);
-  sendInvites_({matchId:id,venue:venue,date:date},profile.displayName,lineup.newInvites);
-  sendEmailInvites_({matchId:id,venue:venue,date:date},profile.displayName,lineup.newEmailInvites);
-  sendOrganizerSummary_({matchId:id,venue:venue,date:date},user.email,profile.displayName,lineup);
+  sendInvites_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},profile.displayName,lineup.newInvites);
+  sendEmailInvites_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},profile.displayName,lineup.newEmailInvites);
+  sendOrganizerSummary_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},user.email,profile.displayName,lineup);
   return {matchId:id,message:calendarId?"Partita creata e aggiunta al calendario.":"Partita creata. Calendar non è ancora configurato."};
 }
 
@@ -300,7 +300,7 @@ function notifyJoin_(match,profile,user) {
   try {
     if(String(match.createdBy)===user.playerId) return;
     const org=playerMap_()[String(match.createdBy)]; if(!org||!org.email) return;
-    const info={matchId:String(match.matchId),venue:String(match.venue),date:new Date(match.dateTime)};
+    const info={matchId:String(match.matchId),venue:venueLabel_(match),date:new Date(match.dateTime)};
     const lu=parseLineup_(sheet_("Matches").getRange(match._row,9).getValue()), taken=lu?lu.filter(x=>x.playerId||x.name||x.email).length:0;
     mail_(org.email,"✅ "+profile.displayName+" ha accettato: partita di padel del "+whenText_(info.date),
       "<p>Ciao "+esc_(org.name)+",</p><p><b>"+esc_(profile.displayName)+"</b> si è iscritto alla partita di <b>"+esc_(info.venue)+"</b>, "+esc_(whenText_(info.date))+".</p>"+(lu?"<p>Posti occupati: "+taken+" su 4.</p>":"")+"<p><a href=\""+esc_(appLink_(info))+"\">Apri la partita</a></p>");
@@ -309,7 +309,7 @@ function notifyJoin_(match,profile,user) {
 /** Tells everybody who is registered that the match has been marked as completed (feedback can now be left). */
 function notifyCompleted_(row) {
   try {
-    const pm=playerMap_(), info={matchId:String(row.matchId),venue:String(row.venue),date:new Date(row.dateTime)};
+    const pm=playerMap_(), info={matchId:String(row.matchId),venue:venueLabel_(row),date:new Date(row.dateTime)};
     readRows_("Registrations").filter(r=>String(r.matchId)===info.matchId&&String(r.status)==="joined").forEach(function(r){
       const p=pm[String(r.playerId)]; if(!p||!p.email) return;
       mail_(p.email,"🎾 Partita conclusa: lascia il tuo feedback",
@@ -331,6 +331,20 @@ function cancelRegistration(idToken,input) {
   return {message:"Iscrizione annullata."};
 }
 
+/** Venue text for emails: adds the court number when known. */
+function venueLabel_(row) { const c=String(row.court||"").trim(); return String(row.venue)+(c?" · campo "+c:""); }
+
+/** Organizer or admin sets or clears the court number (optional). */
+function setCourt(idToken,input) {
+  const user=verifyUser_(idToken); input=input||{};
+  const matchId=clean_(input.matchId,80), court=clean_(input.court,10);
+  const row=readRows_("Matches").find(r=>String(r.matchId)===matchId);
+  if(!row||String(row.status)==="cancelled") throw new Error("Partita non trovata.");
+  if(!user.isAdmin&&String(row.createdBy)!==user.playerId) throw new Error("Solo chi ha proposto la partita può cambiare il numero del campo.");
+  sheet_("Matches").getRange(row._row,10).setValue(court);
+  return {message:court?"Numero del campo salvato.":"Numero del campo tolto."};
+}
+
 function setLineup(idToken,input) {
   const user=verifyUser_(idToken); input=input||{};
   const matchId=clean_(input.matchId,80);
@@ -345,8 +359,8 @@ function setLineup(idToken,input) {
     const lineup=buildLineup_(input.lineup,{playerId:String(row.createdBy)},null,joined,parseLineup_(row.lineup));
     sheet_("Matches").getRange(row._row,9).setValue(JSON.stringify(lineup));
     const ownerRow=readRows_("Players").find(r=>String(r.playerId)===String(row.createdBy));
-    sendInvites_({matchId:String(row.matchId),venue:String(row.venue),date:new Date(row.dateTime)},ownerRow?String(ownerRow.displayName):"L'organizzatore",lineup.newInvites.filter(id=>joined.indexOf(id)<0));
-    sendEmailInvites_({matchId:String(row.matchId),venue:String(row.venue),date:new Date(row.dateTime)},ownerRow?String(ownerRow.displayName):"L'organizzatore",lineup.newEmailInvites);
+    sendInvites_({matchId:String(row.matchId),venue:venueLabel_(row),date:new Date(row.dateTime)},ownerRow?String(ownerRow.displayName):"L'organizzatore",lineup.newInvites.filter(id=>joined.indexOf(id)<0));
+    sendEmailInvites_({matchId:String(row.matchId),venue:venueLabel_(row),date:new Date(row.dateTime)},ownerRow?String(ownerRow.displayName):"L'organizzatore",lineup.newEmailInvites);
     return {message:"Formazione aggiornata."};
   } finally {
     lock.releaseLock();
@@ -428,7 +442,7 @@ function processInvites() {
       const status=String(m.status); if(status==="cancelled"||status==="completed") return;
       const lineup=parseLineup_(m.lineup); if(!lineup) return;
       const start=new Date(m.dateTime).getTime(); if(isNaN(start)||start<now) return;
-      const matchId=String(m.matchId), info={matchId:matchId,venue:String(m.venue),date:new Date(m.dateTime)};
+      const matchId=String(m.matchId), info={matchId:matchId,venue:venueLabel_(m),date:new Date(m.dateTime)};
       let changed=false;
       lineup.forEach(function(s,i){
         if((!s.playerId&&!s.email)||s.playerId===String(m.createdBy)||(s.playerId&&joined[matchId+"|"+s.playerId])||!s.invitedAt||s.reminded) return;
