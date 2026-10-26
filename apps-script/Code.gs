@@ -21,7 +21,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.12";
+const BACKEND_VERSION = "2026-10-26.13";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
@@ -258,6 +258,7 @@ function createMatch(idToken,input) {
       const calendar=CalendarApp.getCalendarById(calendarId);
       if(!calendar) throw new Error("Calendario non accessibile: verifica CALENDAR_ID e permessi.");
       const event=calendar.createEvent("Padel Community · "+venue+(court?" · campo "+court:""),date,new Date(date.getTime()+90*60000),{description:"Partita proposta da "+user.email+(notes?"\n\n"+notes:"")});
+      try { event.addPopupReminder(24*60); } catch(e) {}
       eventId=event.getId();
     } catch(err) { throw new Error("Partita non salvata: errore Calendar. "+err.message); }
   }
@@ -265,7 +266,6 @@ function createMatch(idToken,input) {
   sheet_("Registrations").appendRow([Utilities.getUuid(),id,user.playerId,"joined",created,""]);
   sendInvites_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},profile.displayName,lineup.newInvites);
   sendEmailInvites_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},profile.displayName,lineup.newEmailInvites);
-  sendOrganizerSummary_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},user.email,profile.displayName,lineup);
   return {matchId:id,drafts:takeDrafts_(),mailWarning:mailWarning_(),message:calendarId?"Partita creata e aggiunta al calendario.":"Partita creata. Calendar non è ancora configurato."};
 }
 
@@ -292,7 +292,6 @@ function registerForMatch(idToken,input) {
       if(slot<0) { slot=pickSlot_(lineup,String(profile.preferredSide||"")); if(slot<0) throw new Error("La partita è già completa."); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:"",token:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); }
     } else if(active.length>=4) throw new Error("La partita è già completa.");
     sheet_("Registrations").appendRow([Utilities.getUuid(),matchId,user.playerId,"joined",new Date(),""]);
-    notifyJoin_(match,profile,user);
     return {message:"Iscrizione registrata."};
   } finally {
     lock.releaseLock();
@@ -305,17 +304,6 @@ function sameName_(a,b) {
   a=normName_(a); b=normName_(b); if(!a||!b) return false;
   if(a===b) return true;
   return a.length>=3&&b.length>=3&&(b.indexOf(a+" ")===0||a.indexOf(b+" ")===0);
-}
-/** Tells the organizer that somebody took a seat (not for the organizer's own registration). */
-function notifyJoin_(match,profile,user) {
-  try {
-    if(String(match.createdBy)===user.playerId) return;
-    const org=playerMap_()[String(match.createdBy)]; if(!org||!org.email) return;
-    const info={matchId:String(match.matchId),venue:venueLabel_(match),date:new Date(match.dateTime)};
-    const lu=parseLineup_(sheet_("Matches").getRange(match._row,9).getValue()), taken=lu?lu.filter(x=>x.playerId||x.name||x.email).length:0;
-    mail_(org.email,"✅ "+profile.displayName+" ha accettato: partita di padel del "+whenText_(info.date),
-      "<p>Ciao "+esc_(org.name)+",</p><p><b>"+esc_(profile.displayName)+"</b> si è iscritto alla partita di <b>"+esc_(info.venue)+"</b>, "+esc_(whenText_(info.date))+".</p>"+(lu?"<p>Posti occupati: "+taken+" su 4.</p>":"")+"<p><a href=\""+esc_(appLink_(info))+"\">Apri la partita</a></p>");
-  } catch(err) { console.log("Notifica iscrizione non inviata: "+err); }
 }
 /** Tells everybody who is registered that the match has been marked as completed (feedback can now be left). */
 function notifyCompleted_(row) {
@@ -454,8 +442,8 @@ function sendEmailInvites_(match,organizerName,invites) {
         "<p><b>"+esc_(match.venue)+"</b><br>"+esc_(whenText_(match.date))+"</p>"+
         "<p>Ti abbiamo riservato un posto. Per prenderlo: <a href=\""+esc_(link)+"\">apri la partita</a>, <b>accedi con Google</b>, salva il tuo profilo (nome, livello e lato preferito) e premi “Accetta invito”. Puoi usare qualsiasi account Google, anche diverso da questo indirizzo ("+esc_(email)+"): il link riconosce il tuo invito.</p>"+
         "<p style=\"color:#666;font-size:13px\">Non serve una Gmail: va bene qualsiasi account Google (anche di lavoro o scuola). Se non ne hai uno, puoi crearne uno con questo stesso indirizzo email o con un altro: <a href=\"https://accounts.google.com/signup\">accounts.google.com/signup</a> (scegli «Usa il mio indirizzo email attuale»).</p>"+
-        "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore: se la partita è tra più di "+REMINDER_MIN_DAYS_LEFT+" giorni ti mandiamo un promemoria, altrimenti il posto viene liberato e l'organizzatore viene avvisato.</p>",
-        "Ciao,\n"+organizerName+" ti ha invitato a una partita di padel:\n"+match.venue+"\n"+whenText_(match.date)+"\n\nTi abbiamo riservato un posto. Per prenderlo apri la partita, accedi con Google (va bene qualsiasi account, anche diverso da questo indirizzo), salva il tuo profilo e premi “Accetta invito”:\n"+link+"\n\nSe non rispondi entro 24 ore e la partita è entro "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto viene liberato.\n");
+        "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore e la partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto torna libero.</p>",
+        "Ciao,\n"+organizerName+" ti ha invitato a una partita di padel:\n"+match.venue+"\n"+whenText_(match.date)+"\n\nTi abbiamo riservato un posto. Per prenderlo apri la partita, accedi con Google (va bene qualsiasi account, anche diverso da questo indirizzo), salva il tuo profilo e premi “Accetta invito”:\n"+link+"\n\nSe non rispondi entro 24 ore e la partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto torna libero.\n");
     });
   } catch(err) { console.log("Inviti email non inviati: "+err); }
 }
@@ -472,56 +460,30 @@ function sendInvitesUnsafe_(match,organizerName,playerIds) {
       "<p>Ciao "+esc_(p.name)+",</p><p><b>"+esc_(organizerName)+"</b> ti ha invitato a una partita di padel:</p>"+
       "<p><b>"+esc_(match.venue)+"</b><br>"+esc_(whenText_(match.date))+"</p>"+
       "<p>Ti abbiamo riservato un posto. <a href=\""+esc_(appLink_(match))+"\">Apri la partita e premi “Accetta invito”</a>.</p>"+
-      "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore: se la partita è tra più di "+REMINDER_MIN_DAYS_LEFT+" giorni ti mandiamo un promemoria, altrimenti il posto viene liberato e l'organizzatore viene avvisato.</p>",
+      "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore e la partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto torna libero.</p>",
       "Ciao "+p.name+",\n"+organizerName+" ti ha invitato a una partita di padel:\n"+match.venue+"\n"+whenText_(match.date)+"\n\nTi abbiamo riservato un posto. Apri la partita e premi “Accetta invito”:\n"+appLink_(match)+"\n");
   });
 }
 
-/** Rules and management info, used in the organizer email (same content as the in-app popup). */
-function manageInfoHtml_() {
-  return "<p><b>Inviti</b><br>Chi inviti dalla community riceve un'email e un posto riservato. Se non risponde entro 24 ore: con la partita a più di "+REMINDER_MIN_DAYS_LEFT+" giorni gli arriva un promemoria; con la partita entro "+REMINDER_MIN_DAYS_LEFT+" giorni l'invito viene annullato, il posto torna libero e ricevi un avviso.</p>"+
-    "<p><b>Gestione</b><br>Dalla scheda della partita puoi usare “Modifica formazione” (cambia i posti, ma non chi è già iscritto), “Segna conclusa” (dopo l'orario di fine) e “Annulla partita”.</p>"+
-    "<p><b>Cancellazioni</b><br>Chi è iscritto può annullare la propria iscrizione: il posto si libera. Se annulli la partita sparisce dall'elenco per tutti.</p>"+
-    "<p><b>Feedback</b><br>Dopo “Segna conclusa” ogni iscritto può lasciare un feedback privato sui compagni, che resta nel suo Google Drive.</p>";
-}
-function sendOrganizerSummary_(match,email,organizerName,lineup) {
-  try {
-    const slots=lineup.map(function(x,i){ const side=i%2===0?"destra":"sinistra", who=x.email?esc_(x.email)+" (invitato via email)":x.playerId?esc_(x.name)+(x.invitedAt?" (invitato)":" (tu)"):(x.name?esc_(x.name)+" (ospite)":"libero"); return "Coppia "+(Math.floor(i/2)+1)+", "+side+": "+who; });
-    mail_(email,"🎾 Hai creato una partita di padel: "+match.venue,
-      "<p>Ciao "+esc_(organizerName)+",</p><p>la tua partita è stata creata:</p><p><b>"+esc_(match.venue)+"</b><br>"+esc_(whenText_(match.date))+"</p><p>"+slots.join("<br>")+"</p>"+
-      "<p><a href=\""+esc_(appLink_(match))+"\">Apri la partita</a></p><hr>"+manageInfoHtml_());
-  } catch(err) { console.log("Email organizzatore non inviata: "+err); }
-}
-
-/** Run hourly (see installTriggers): after 24h without an answer, remind (match more than 4 days away) or release the seat and tell the organizer. */
+/** Run hourly (see installTriggers): an invitation left unanswered for 24 hours frees its seat when the match is less than 4 days away. No emails are sent: the organizer sees the free seat in the app. */
 function processInvites() {
   const lock=LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const now=Date.now(), DAY=24*60*60*1000, pm=playerMap_(), joined={};
+    const now=Date.now(), DAY=24*60*60*1000, joined={};
     readRows_("Registrations").filter(r=>String(r.status)==="joined").forEach(r=>{ joined[String(r.matchId)+"|"+String(r.playerId)]=1; });
     const msh=sheet_("Matches");
     readRows_("Matches").forEach(function(m){
       const status=String(m.status); if(status==="cancelled"||status==="completed") return;
       const lineup=parseLineup_(m.lineup); if(!lineup) return;
       const start=new Date(m.dateTime).getTime(); if(isNaN(start)||start<now) return;
-      const matchId=String(m.matchId), info={matchId:matchId,venue:venueLabel_(m),date:new Date(m.dateTime)};
+      if((start-now)/DAY>REMINDER_MIN_DAYS_LEFT) return;
+      const matchId=String(m.matchId);
       let changed=false;
       lineup.forEach(function(s,i){
-        if((!s.playerId&&!s.email)||s.playerId===String(m.createdBy)||(s.playerId&&joined[matchId+"|"+s.playerId])||!s.invitedAt||s.reminded) return;
+        if((!s.playerId&&!s.email)||s.playerId===String(m.createdBy)||(s.playerId&&joined[matchId+"|"+s.playerId])||!s.invitedAt) return;
         const age=now-new Date(s.invitedAt).getTime(); if(isNaN(age)||age<INVITE_REMINDER_AFTER_MS) return;
-        const invitee=s.email?{name:s.email,email:s.email}:(pm[s.playerId]||{name:s.name,email:""}), org=pm[String(m.createdBy)]||{name:"",email:""};
-        if((start-now)/DAY>REMINDER_MIN_DAYS_LEFT) {
-          s.reminded=true; changed=true;
-          mail_(invitee.email,"⏰ Promemoria: hai un invito a una partita di padel",
-            "<p>Ciao "+esc_(invitee.name)+",</p><p>hai ancora un posto riservato per la partita di <b>"+esc_(info.venue)+"</b>, "+esc_(whenText_(info.date))+".</p><p><a href=\""+esc_(appLink_(info,s.token))+"\">Apri la partita e premi “Accetta invito”</a>.</p>");
-        } else {
-          lineup[i]={playerId:"",name:"",invitedAt:"",reminded:false,email:"",token:""}; changed=true;
-          mail_(org.email,"Invito scaduto: "+invitee.name+" non ha risposto",
-            "<p>Ciao "+esc_(org.name)+",</p><p><b>"+esc_(invitee.name)+"</b> non ha risposto all'invito per la partita di <b>"+esc_(info.venue)+"</b>, "+esc_(whenText_(info.date))+". La partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, quindi l'invito è stato annullato e il posto è di nuovo libero.</p><p><a href=\""+esc_(appLink_(info))+"\">Apri la partita</a> per invitare qualcun altro.</p>");
-          mail_(invitee.email,"Invito annullato: partita di padel del "+whenText_(info.date),
-            "<p>Ciao "+esc_(invitee.name)+",</p><p>l'invito alla partita di <b>"+esc_(info.venue)+"</b> è stato annullato perché non hai risposto in tempo. Se vuoi ancora giocare, <a href=\""+esc_(appLink_(info))+"\">controlla se c'è un posto libero</a>.</p>");
-        }
+        lineup[i]={playerId:"",name:"",invitedAt:"",reminded:false,email:"",token:""}; changed=true;
       });
       if(changed) msh.getRange(m._row,9).setValue(JSON.stringify(lineup));
     });
