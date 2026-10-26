@@ -4,7 +4,7 @@
  * This script is bound to the community spreadsheet.
  */
 const HEADERS = {
-  Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt","photoUrl","gender","consentAt","consentVersion"],
+  Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt","photoUrl","gender","consentAt","consentVersion","mailOptOut"],
   Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId","lineup","court","type"],
   Registrations: ["registrationId","matchId","playerId","status","createdAt","partnerId"],
   Shares: ["shareId","matchId","token","label","createdBy","createdAt","openedAt","lastOpenAt","opens","devices","playerId","claimedAt","kind","responses"],
@@ -22,7 +22,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.17";
+const BACKEND_VERSION = "2026-10-26.20";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
@@ -36,7 +36,10 @@ const DEFAULT_DISCLAIMER = "Questa app non usa in alcun modo strumenti aziendali
 const MATCH_TYPES = ["any","mixed","same"];
 const TYPE_LABELS = {mixed:"mista (2 uomini + 2 donne)",same:"standard (4 uomini o 4 donne)"};
 const GENDERS = ["male","female","other"];
-const API_METHODS = ["getSettings","getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","startSession","endSession","setLineup","resendInvite","setCourt","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
+/** Posizione: right = Destro (gioca a destra), left = Sinistro (gioca a sinistra), lefty = Mancino (mancino: gioca sempre a destra). "indifferent" resta solo nei profili vecchi: conta come profilo da completare. */
+const SIDES = ["right","left","lefty"];
+function seatSide_(side) { return side==="lefty"?"right":(side==="left"?"left":(side==="right"?"right":"")); }
+const API_METHODS = ["getSettings","getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","startSession","endSession","setLineup","resendInvite","setCourt","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice","prepareBroadcast","saveMailList"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 var CURRENT_INVITE_TOKEN = "";
@@ -114,6 +117,9 @@ function disclaimer_() {
 /** Public (no login): the texts the page shows before anyone signs in. */
 function disclaimerHtml_() { return "<hr><p style=\"color:#666;font-size:12px\">"+esc_(disclaimer_()).replace(/\n/g,"<br>")+"</p>"; }
 function disclaimerText_() { return "\n--\n"+disclaimer_()+"\n"; }
+const DEFAULT_SUPPORT_EMAIL = "pfcardillo-debutelespadel@gmail.com";
+function setting_(key) { try { const r=readRows_("Settings").find(function(x){ return String(x.key)===key; }); return r?String(r.value||"").trim():""; } catch(e) { return ""; } }
+function supportEmail_() { return setting_("supportEmail")||DEFAULT_SUPPORT_EMAIL; }
 function getSettings() { return {community:communityName_(),disclaimer:disclaimer_()}; }
 function communityName_() { return PropertiesService.getScriptProperties().getProperty("COMMUNITY_NAME") || DEFAULT_COMMUNITY; }
 /** Admins live in the "Admins" sheet (column email; column community empty or equal to this community). Until that sheet has rows, the old ADMIN_EMAILS property still works. */
@@ -234,10 +240,11 @@ function appData_(user) {
   const sharesBy=sharesByMatch_(user,players);
   matches.forEach(m => { m.shares=(sharesBy[m.matchId]||[]).filter(sh=>user.isAdmin||m.createdBy===user.playerId||sh.mine); m.registeredCount=counts[m.matchId]||0; m.seatsTaken=m.lineup?m.lineup.filter(x=>x.playerId||x.name).length:m.registeredCount; });
   const mine = players.find(p => p.playerId === user.playerId) || null;
-  if (mine) { const row=readRows_("Players").find(r=>String(r.playerId)===user.playerId); mine.gender=row?String(row.gender||""):""; mine.consentAt=row&&row.consentAt?iso_(row.consentAt):""; mine.consentOk=!!row&&profileComplete_(row); mine.complete=mine.consentOk; }
+  if (mine) { const row=readRows_("Players").find(r=>String(r.playerId)===user.playerId); mine.gender=row?String(row.gender||""):""; mine.consentAt=row&&row.consentAt?iso_(row.consentAt):""; mine.consentOk=!!row&&profileComplete_(row); mine.complete=mine.consentOk; mine.detailsOk=!!row&&detailsComplete_(row); mine.mailOptOut=!!row&&truthy_(row.mailOptOut); }
+  const incomplete=user.isAdmin?readRows_("Players").filter(r=>r.playerId&&truthy_(r.active)&&!detailsComplete_(r)).map(r=>({name:String(r.displayName||"Giocatore"),missing:(GENDERS.indexOf(String(r.gender||""))<0?["sesso"]:[]).concat(SIDES.indexOf(String(r.preferredSide||""))<0?["posizione"]:[])})):[];
   const inviteStatus=!CURRENT_INVITE_TOKEN?"":(matches.some(m=>m.lineup&&m.lineup.some(x=>x.mine&&!x.playerId))?"ok":(readInvites_().some(r=>String(r.token)===CURRENT_INVITE_TOKEN)?"community":"used"));
   const invites=user.isAdmin?readInvites_().map(r=>({email:String(r.email||""),invitedAt:iso_(r.invitedAt),joined:!!String(r.joinedAt||""),label:String(r.label||""),joins:Number(r.joins)||0,link:String(r.email||"").trim()?"":communityLink_(String(r.token))})):[];
-  return {user:{email:user.email,playerId:user.playerId,isAdmin:user.isAdmin},community:communityName_(),disclaimer:disclaimer_(),communityInvites:invites,me:mine,players:players,matches:matches,registrations:registrations,inviteStatus:inviteStatus};
+  return {user:{email:user.email,playerId:user.playerId,isAdmin:user.isAdmin},community:communityName_(),disclaimer:disclaimer_(),communityInvites:invites,me:mine,players:players,matches:matches,registrations:registrations,inviteStatus:inviteStatus,incomplete:incomplete,mailList:user.isAdmin?setting_("mailList"):"",supportEmail:supportEmail_()};
 }
 
 function saveProfile(idToken, input) {
@@ -248,8 +255,8 @@ function saveProfile(idToken, input) {
   const side = clean_(input.preferredSide,20);
   const allowedLevels = ["Bronze","Silver","Silver-Gold","Gold","Gold+"];
   const gender = clean_(input.gender,10);
-  if (!name || allowedLevels.indexOf(level)<0 || ["right","left","indifferent"].indexOf(side)<0)
-    throw new Error("Inserisci nome, livello e lato preferito.");
+  if (!name || allowedLevels.indexOf(level)<0 || SIDES.indexOf(side)<0)
+    throw new Error("Inserisci nome, livello e posizione (Destro, Sinistro o Mancino).");
   if (GENDERS.indexOf(gender)<0) throw new Error("Scegli maschio, femmina o altro.");
   const sh=sheet_("Players"), rows=readRows_("Players");
   const existing=rows.find(r=>String(r.playerId)===user.playerId);
@@ -257,7 +264,7 @@ function saveProfile(idToken, input) {
   if (!hasConsent&&input.gdpr!==true) throw new Error("Per salvare il profilo devi accettare l'informativa privacy.");
   const photo=input.showPhoto===true?safePhoto_(user.picture):"";
   const consentAt=hasConsent?existing.consentAt:new Date();
-  const values=[user.playerId,name,user.email,level,side,true,existing?existing.createdAt:new Date(),new Date(),photo,gender,consentAt,CONSENT_VERSION];
+  const values=[user.playerId,name,user.email,level,side,true,existing?existing.createdAt:new Date(),new Date(),photo,gender,consentAt,CONSENT_VERSION,input.mailOptOut===undefined?(existing?truthy_(existing.mailOptOut):false):input.mailOptOut===true];
   if(existing) sh.getRange(existing._row,1,1,values.length).setValues([values]); else sh.appendRow(values);
   markInviteJoined_(user,!existing);
   return {message:"Profilo salvato.",playerId:user.playerId};
@@ -527,11 +534,12 @@ function installTriggers() {
   return "Controllo inviti attivato: ogni ora.";
 }
 
-/** Free seat that fits the player: right = positions 0 and 2, left = 1 and 3; indifferent players fit anywhere; if no fitting seat is left, any free seat. */
+/** Free seat that fits the player: right (Destro and Mancino) = positions 0 and 2, left (Sinistro) = 1 and 3; indifferent players fit anywhere; if no fitting seat is left, any free seat. */
 function pickSlot_(lineup,side) {
   const free=[0,1,2,3].filter(i=>!lineup[i].playerId&&!lineup[i].name);
   if(!free.length) return -1;
-  if(side==="right"||side==="left") { const fit=free.filter(i=>(i%2===0?"right":"left")===side); if(fit.length) return fit[0]; }
+  const seat=seatSide_(side);
+  if(seat) { const fit=free.filter(i=>(i%2===0?"right":"left")===seat); if(fit.length) return fit[0]; }
   return free[0];
 }
 
@@ -882,6 +890,8 @@ function safePhoto_(url) {
 function profileComplete_(r) {
   return GENDERS.indexOf(String(r.gender||""))>=0&&String(r.consentVersion||"")===CONSENT_VERSION&&!!r.consentAt;
 }
+/** Sesso e posizione compilati: serve solo per l'avviso, non blocca nulla. */
+function detailsComplete_(r) { return GENDERS.indexOf(String(r.gender||""))>=0&&SIDES.indexOf(String(r.preferredSide||""))>=0; }
 function requireProfile_(user) {
   const p=readRows_("Players").find(r=>String(r.playerId)===user.playerId&&truthy_(r.active)&&String(r.displayName||"").trim());
   if(!p) throw new Error("Prima di iscriverti o proporre una partita salva il tuo profilo (nome, livello e lato).");
@@ -950,3 +960,93 @@ function sheet_(name) {
 function clean_(v,max) { return String(v==null?"":v).trim().replace(/[<>]/g,"").slice(0,max); }
 function truthy_(v) { return v===true||String(v).toLowerCase()==="true"||v===1; }
 function iso_(v) { if(!v)return ""; const d=v instanceof Date?v:new Date(v); return isNaN(d.getTime())?String(v):d.toISOString(); }
+
+
+// ---------- Email a tutti i giocatori (solo amministratori) ----------
+// Non spedisce dal backend: prepara bozze per il programma di posta dell'organizzatore, con i destinatari in CCN (come gli inviti).
+const BROADCAST_CHUNK = 40;
+const EMAIL_RE_ = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
+function parseEmails_(raw) {
+  const seen = {}, out = [], bad = [];
+  (Array.isArray(raw) ? raw : String(raw||"").split(/[\s,;]+/)).forEach(function(x){
+    const e = String(x||"").trim().toLowerCase(); if (!e || seen[e]) return; seen[e] = 1;
+    if (EMAIL_RE_.test(e)) out.push(e); else bad.push(e);
+  });
+  return {emails:out, invalid:bad};
+}
+function chunk_(list, n) { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; }
+/** Chi può starci in una partita: un posto libero del suo lato e nessun conflitto di genere/tipo. */
+function eligibleForMatch_(p, lineup, type) {
+  const taken = {}; lineup.forEach(function(x){ if (x.playerId) taken[String(x.playerId)] = 1; });
+  if (taken[String(p.playerId)]) return false;
+  const seat = seatSide_(String(p.preferredSide||""));
+  return [0,1,2,3].some(function(i){
+    if (lineup[i].playerId || lineup[i].name || lineup[i].email) return false;
+    if (seat && (i%2===0?"right":"left") !== seat) return false;
+    try { checkJoin_(type, lineup, i, String(p.gender||"")); return true; } catch(e) { return false; }
+  });
+}
+/** Partite aperte (future, con posti liberi) con link. */
+function openMatches_() {
+  const now = Date.now();
+  return readRows_("Matches").filter(function(r){ return r.matchId && String(r.status||"open") === "open" && new Date(r.dateTime).getTime() > now; }).map(function(r){
+    const lu = parseLineup_(r.lineup) || [];
+    const free = lu.length ? lu.filter(function(x){ return !x.playerId && !x.name && !x.email; }).length : 4;
+    return {matchId:String(r.matchId), venue:String(r.venue||""), date:new Date(r.dateTime), type:MATCH_TYPES.indexOf(String(r.type))>=0?String(r.type):"any", lineup:lu, free:free, row:r};
+  }).filter(function(m){ return m.free > 0; }).sort(function(a,b){ return a.date - b.date; });
+}
+function buildBroadcastBody_(opts) {
+  const lines = [];
+  lines.push(opts.message ? opts.message : "Ciao! Un aggiornamento da Telespadel.");
+  if (opts.matches.length) {
+    lines.push(""); lines.push("Partite aperte, c'è ancora posto:");
+    opts.matches.forEach(function(m){ lines.push("• " + whenText_(m.date) + " · " + m.venue + " · " + m.free + (m.free === 1 ? " posto libero" : " posti liberi") + "\n  " + appLink_({matchId:m.matchId, venue:m.venue, date:m.date}, "")); });
+  } else if (opts.includeOpen) { lines.push(""); lines.push("Al momento non ci sono partite aperte con posti liberi."); }
+  if (opts.askProfile) { lines.push(""); lines.push("Ci mancano ancora due informazioni nel tuo profilo (sesso e posizione: Destro, Sinistro o Mancino). Servono per proporti i compagni più compatibili: bastano pochi secondi nell'app, scheda Profilo."); }
+  lines.push(""); lines.push("Apri l'app: " + (PropertiesService.getScriptProperties().getProperty("APP_URL") || DEFAULT_APP_URL));
+  lines.push(""); lines.push("Per qualsiasi problema scrivi a " + supportEmail_() + ".");
+  lines.push("Teniamo moltissimo alla riservatezza delle tue informazioni: le usiamo solo per organizzare le partite e non le condividiamo con nessuno.");
+  lines.push("Se non vuoi più ricevere queste email, rispondi STOP oppure disattivale dal tuo profilo nell'app.");
+  return lines.join("\n") + disclaimerText_();
+}
+/**
+ * input: {audience:"all"|"incomplete"|"match", matchId, includeManual:boolean, includeOpen:boolean, message}
+ * Destinatari: giocatori registrati (non disinattivati, non in opt-out) + elenco manuale (Settings → mailList) solo per "all".
+ */
+function prepareBroadcast(idToken, input) {
+  const user = verifyUser_(idToken); input = input || {};
+  if (!user.isAdmin) throw new Error("Solo un amministratore può scrivere a tutti.");
+  const audience = ["all","incomplete","match"].indexOf(input.audience) >= 0 ? input.audience : "all";
+  const players = readRows_("Players").filter(function(r){ return r.playerId && truthy_(r.active) && EMAIL_RE_.test(String(r.email||"").trim()) && !truthy_(r.mailOptOut); });
+  const open = openMatches_();
+  let list = players, matches = open, askProfile = false;
+  if (audience === "incomplete") { list = players.filter(function(r){ return !detailsComplete_(r); }); askProfile = true; }
+  if (audience === "match") {
+    const m = open.find(function(x){ return x.matchId === String(input.matchId||""); });
+    if (!m) throw new Error("Scegli una partita aperta con posti liberi.");
+    list = players.filter(function(r){ return eligibleForMatch_(r, m.lineup, m.type); }); matches = [m];
+  } else if (input.includeOpen === false) matches = [];
+  let emails = list.map(function(r){ return String(r.email).trim().toLowerCase(); });
+  let manual = [];
+  if (audience === "all" && input.includeManual !== false) manual = parseEmails_(setting_("mailList")).emails;
+  const seen = {}; const all = emails.concat(manual).filter(function(e){ if (seen[e]) return false; seen[e] = 1; return true; });
+  if (!all.length) throw new Error("Nessun destinatario per questa selezione.");
+  const body = buildBroadcastBody_({message:clean_(input.message,600), matches:matches, includeOpen:audience !== "incomplete", askProfile:askProfile});
+  const subject = audience === "incomplete" ? "Telespadel: completa il tuo profilo" : (matches.length ? "Telespadel: partite aperte" : "Telespadel: novità");
+  const groups = chunk_(all, BROADCAST_CHUNK);
+  return {count:all.length, message:all.length+" destinatari in "+groups.length+(groups.length===1?" email":" email (una per gruppo)")+": aprile e premi invia dal tuo programma di posta.", drafts:groups.map(function(g, i){ return {to:"", bcc:g, name:"Gruppo " + (i+1) + " di " + groups.length + " (" + g.length + " destinatari)", subject:subject, text:body}; })};
+}
+/** Salva l'elenco manuale di indirizzi (Settings → mailList). */
+function saveMailList(idToken, input) {
+  const user = verifyUser_(idToken);
+  if (!user.isAdmin) throw new Error("Solo un amministratore può modificare l'elenco.");
+  const p = parseEmails_(input && input.emails);
+  if (p.invalid.length) throw new Error("Indirizzi non validi: " + p.invalid.slice(0,5).join(", "));
+  const lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    const sh = sheet_("Settings"), row = readRows_("Settings").find(function(r){ return String(r.key) === "mailList"; });
+    const v = p.emails.join(", ");
+    if (row) sh.getRange(row._row, 2).setValue(v); else sh.appendRow(["mailList", v, "Indirizzi aggiunti a mano dagli organizzatori per le email a tutti (separati da virgola)."]);
+    return {count:p.emails.length, mailList:v};
+  } finally { lock.releaseLock(); }
+}

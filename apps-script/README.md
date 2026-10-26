@@ -5,7 +5,7 @@ Web app mobile-first senza server proprietario né installazione. L'interfaccia 
 ## Funzioni implementate nel codice
 
 - Accesso Google tramite Google Identity Services e verifica server-side dell'ID token.
-- Profili con livelli Bronze, Silver, Silver-Gold, Gold, Gold+ e preferenza destra, sinistra o indifferente.
+- Profili con livelli Bronze, Silver, Silver-Gold, Gold, Gold+ e posizione in campo: Destro (gioca a destra), Sinistro (gioca a sinistra), Mancino (mancino: gioca a destra).
 - Creazione partita e iscrizione automatica di chi la propone.
 - Iscrizione/annullamento, limite di quattro iscritti per partita e annullamento della partita da parte di chi l'ha proposta o dell'amministratore.
 - Match Score personalizzato: complementarità destra/sinistra, distanza di livello e feedback personale conservato nel Drive dell'utente.
@@ -88,3 +88,12 @@ Limiti e condizioni:
 
 ### Avviso (disclaimer)
 Il testo mostrato in fondo all'app e nelle email d'invito sta nella scheda **Settings** del foglio, riga `disclaimer`, colonna `value`. `setupPadelCommunity` lo crea con il testo predefinito; modificalo lì. Cella vuota = testo predefinito.
+
+## Posizione, avviso profilo ed email a tutti (v. 2026-10-26.20)
+- **Match Score**: coppia Destro+Sinistro e Mancino+Sinistro = bonus (+25); Mancino+Destro = malus (−15); due Destri, due Sinistri o due Mancini = malus forte (−30). Il Mancino viene messo sempre nei posti di destra.
+- **Profili vecchi** con «indifferente»: continuano a funzionare, ma risultano incompleti finché la persona non sceglie la posizione.
+- **Avviso non bloccante**: chi non ha sesso e posizione vede un riquadro in alto con «Completa ora».
+- **Solo amministratori** (Profilo → Strumenti amministratore): elenco dei profili incompleti con promemoria da copiare per WhatsApp, e «Scrivi ai giocatori»: destinatari in CCN, a gruppi di 40, scegliendo tutti / solo incompleti / solo chi può giocare una partita aperta. Come per gli inviti le email si aprono nel tuo programma di posta (nessun limite giornaliero di Apps Script). Il testo contiene le partite aperte con link, l'indirizzo di supporto, la nota sulla riservatezza e la riga STOP.
+- **Elenco manuale** di indirizzi: scheda Settings, riga `mailList` (o dal pannello); indirizzo di supporto: riga `supportEmail` (predefinito pfcardillo-debutelespadel@gmail.com).
+- **Disattivare le email**: casella nel profilo (colonna `mailOptOut` in Players, creata da `setupPadelCommunity`). Chi risponde STOP dall'elenco manuale va tolto a mano.
+- Aggiornamento: incolla il nuovo Code.gs, esegui `setupPadelCommunity`, poi «Nuova versione» del deployment.
