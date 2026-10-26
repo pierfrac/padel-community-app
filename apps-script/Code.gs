@@ -17,7 +17,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.1";
+const BACKEND_VERSION = "2026-10-26.2";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 const GENDERS = ["male","female","other"];
@@ -52,11 +52,14 @@ function setupPadelCommunity() {
       sh.getRange(1,1,1,HEADERS[name].length).setValues([HEADERS[name]]);
       sh.setFrozenRows(1);
     } else {
-      const existingCount = sh.getLastColumn();
-      const first = sh.getRange(1,1,1,existingCount).getDisplayValues()[0];
+      // Width of the header row only: stray notes in far columns or lower rows must not break the check.
+      const row1 = sh.getRange(1,1,1,sh.getMaxColumns()).getDisplayValues()[0].map(function(v){ return String(v).trim(); });
+      let existingCount = row1.length;
+      while (existingCount > 0 && !row1[existingCount-1]) existingCount--;
+      const first = row1.slice(0,existingCount);
       const expectedPrefix = HEADERS[name].slice(0,existingCount);
-      if (existingCount > HEADERS[name].length || first.join("|") !== expectedPrefix.join("|"))
-        throw new Error("Intestazioni non compatibili nella scheda "+name+". Non sono state sovrascritte.");
+      if (existingCount === 0 || existingCount > HEADERS[name].length || first.join("|") !== expectedPrefix.join("|"))
+        throw new Error("Intestazioni non compatibili nella scheda "+name+". Trovate: ["+first.join(", ")+"]. Attese: ["+HEADERS[name].join(", ")+"]. Non è stato modificato nulla. Se la scheda contiene solo dati di prova, eliminala (clic destro sulla scheda → Elimina) e riesegui setupPadelCommunity.");
       if (existingCount < HEADERS[name].length) {
         sh.getRange(1,existingCount+1,1,HEADERS[name].length-existingCount).setValues([HEADERS[name].slice(existingCount)]);
       }
