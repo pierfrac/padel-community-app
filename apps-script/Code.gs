@@ -21,7 +21,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.9";
+const BACKEND_VERSION = "2026-10-26.10";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
@@ -189,10 +189,16 @@ function getPublicConfig() {
   return {googleClientId:p.getProperty("GOOGLE_CLIENT_ID") || "", configured:!!p.getProperty("GOOGLE_CLIENT_ID")};
 }
 
+/** While getAppData builds its answer each sheet is read once, not once per use: this is what makes the first screen load faster. */
+var ROWS_MEMO = null;
 function getAppData(idToken) {
   const user = verifyUser_(idToken);
   claimShare_(user);
   rememberDevice_(user);
+  ROWS_MEMO = {};
+  try { return appData_(user); } finally { ROWS_MEMO = null; }
+}
+function appData_(user) {
   const players = readRows_("Players").filter(r => r.playerId && truthy_(r.active)).map(function(r) {
     return {playerId:String(r.playerId),displayName:String(r.displayName || "Giocatore"),skillLevel:String(r.skillLevel || "Da definire"),preferredSide:String(r.preferredSide || "indifferent"),photoUrl:safePhoto_(r.photoUrl),active:true};
   });
@@ -552,7 +558,7 @@ function rememberDevice_(user) {
   if(!CURRENT_DEVICE) return;
   try {
     const sh=sheet_("Devices"), r=readRows_("Devices").find(x=>String(x.deviceId)===CURRENT_DEVICE);
-    if(r) { if(String(r.playerId)!==user.playerId) sh.getRange(r._row,2).setValue(user.playerId); sh.getRange(r._row,4).setValue(new Date()); }
+    if(r) { if(String(r.playerId)!==user.playerId) sh.getRange(r._row,2).setValue(user.playerId); if(String(r.playerId)!==user.playerId||!r.lastSeen||Date.now()-new Date(r.lastSeen).getTime()>3600000) sh.getRange(r._row,4).setValue(new Date()); }
     else sh.appendRow([CURRENT_DEVICE,user.playerId,new Date(),new Date()]);
   } catch(e) {}
 }
@@ -864,6 +870,10 @@ function lookupEmail(idToken,input) {
   return p?{found:true,playerId:String(p.playerId),displayName:String(p.displayName||"")}:{found:false};
 }
 function readRows_(name) {
+  if(ROWS_MEMO&&ROWS_MEMO[name]) return ROWS_MEMO[name];
+  const rows=readRowsFresh_(name); if(ROWS_MEMO) ROWS_MEMO[name]=rows; return rows;
+}
+function readRowsFresh_(name) {
   const sh=sheet_(name); if(sh.getLastRow()<2) return [];
   const headers=HEADERS[name];
   return sh.getRange(2,1,sh.getLastRow()-1,headers.length).getValues().map(function(row,i){
