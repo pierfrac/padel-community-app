@@ -64,7 +64,7 @@ details.match{border:0;border-radius:18px;box-shadow:0 2px 12px rgba(80,40,200,.
 .tabs{background:rgba(14,10,52,.92);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-top:1px solid #ffffff1f}.tabs button{background:none;box-shadow:none;color:#a9a6d6}.tabs button.on{color:var(--lime);box-shadow:inset 0 3px 0 var(--lime)}
 .tour{border-color:var(--green)}.tour-hl{outline-color:var(--lime)}.match.focus{outline:3px solid var(--lime);outline-offset:2px}
 .status{background:rgba(255,255,255,.1);color:#d9d3ff}footer.muted{color:#b9b5e6}footer.muted button{background:rgba(255,255,255,.14);color:#fff;box-shadow:none}
-.sectionhead{margin:18px 4px 6px;font-size:1rem}details.pastbox>summary{cursor:pointer;margin:18px 4px 6px;font-weight:700}.pending{box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.sharebox.fresh .rowbuttons>*{border:1.5px solid #7c3cff;background:#fff;border-radius:12px;padding:10px 14px}.sharebox.fresh{border:2px solid #7c3cff;box-shadow:0 0 0 4px rgba(124,60,255,.18)}.sharebox.fresh .pending{margin:0 0 8px;padding:8px 10px;border-radius:10px;background:#ece6ff;color:#2a1a66;font-weight:700;box-shadow:none}.sectionhead{margin:18px 4px 6px;font-size:1rem}details.pastbox>summary{cursor:pointer;margin:18px 4px 6px;font-weight:700}.pending{box-shadow:0 4px 14px rgba(0,0,0,.25)}
 .hero.in{background:linear-gradient(120deg,#12b76a,#0aa0a0);box-shadow:0 10px 28px #12b76a55}.hero.in::after{display:none}.hero.in .tick{color:#0aa070}
 dialog.info{border-radius:22px}dialog.info::backdrop{background:rgba(8,4,40,.65)}
 .sugg .sg-b{background:linear-gradient(135deg,#5b2cff,#a23bff)}
@@ -449,7 +449,9 @@ function comLinkBox(x){const url=x.link,community=($("communityTag").textContent
   const q=qrcode(0,"M");q.addData(url);q.make();const card=el("div","qrcard"),img=el("img");img.alt="QR code per entrare nella community";img.width=200;img.height=200;img.style.display="block";img.src=q.createDataURL(4);
   card.append(el("h3",null,"🎾 Community "+community),img,el("p","cta","Inquadra il QR code con la fotocamera, accedi con Google e compila il profilo."));box.append(card);};
  row.append(qrBtn);box.append(row);return box;}
-$("comLink").onclick=()=>{setMessage("comMsg","");server("createCommunityLink",{label:$("comLabel").value},r=>{$("comLabel").value="";setMessage("comMsg","Link creato: lo trovi qui sotto.");refreshData();},e=>setMessage("comMsg",e.message));};
+$("comLink").onclick=()=>{const btn=$("comLink");setMessage("comMsg","");btn.disabled=true;btn.textContent="Creo il link…";const reset=()=>{btn.disabled=false;btn.textContent="Crea link";};
+ server("createCommunityLink",{label:$("comLabel").value},r=>{reset();$("comLabel").value="";const lk=$("comLinks");const box=comLinkBox({label:r.label,joins:0,link:r.url});box.classList.add("fresh");box.prepend(el("div","pending","✅ Link pronto! Scegli come condividerlo:"));lk.prepend(box);setMessage("comMsg","");setTimeout(()=>box.scrollIntoView({behavior:"smooth",block:"center"}),60);},
+  e=>{reset();setMessage("comMsg",/Operazione non valida/.test(e.message||"")?"Il backend non è aggiornato: pubblica la nuova versione di Code.gs (vedi Aiuto → Per gli amministratori).":(e.message||"Errore"));});};
 $("comSend").onclick=()=>{setMessage("comMsg","");const v=$("comEmails").value;if(!v.trim()){setMessage("comMsg","Scrivi almeno un indirizzo email.");return;}server("inviteToCommunity",{emails:v},r=>{setMessage("comMsg",r.message);if(r.result&&!r.result.invalid.length&&!r.result.noQuota.length)$("comEmails").value="";refreshData();},e=>setMessage("comMsg",e.message));};
 $("resetOpen").onclick=()=>{$("resetConfirm").value="";$("resetProfiles").checked=false;setMessage("resetMsg","");$("resetDlg").showModal();};
 $("resetCancel").onclick=()=>$("resetDlg").close();
