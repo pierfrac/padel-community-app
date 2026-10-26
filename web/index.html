@@ -159,7 +159,7 @@ function setBusy(d){busyCount=Math.max(0,busyCount+d);$("busy").style.display=bu
 function server(method,arg,ok,bad){if(!idToken){bad({message:"Accedi con Google prima di continuare."});return}if(!API_URL){bad({message:"Configurazione incompleta: manca apiUrl in config.js."});return}
  if((method==="registerForMatch"||method==="createMatch")&&!(data.me&&data.me.complete!==false)){setMessage("matchesMsg","Prima completa il profilo: nome, livello, lato, genere e informativa privacy.");showTab("profile");$("profileForm").scrollIntoView({behavior:"smooth",block:"center"});bad({message:"Prima completa il profilo: nome, livello, lato, genere e informativa privacy."});return;}
  setBusy(1);const done=f=>x=>{setBusy(-1);f(x)};ok=done(ok);bad=done(bad);
- fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({method:method,idToken:idToken,arg:arg,inviteToken:inviteToken,device:deviceId()})}).then(r=>r.text().then(t=>{let j;try{j=JSON.parse(t)}catch(e){throw new Error("risposta non valida (HTTP "+r.status+")")}return j})).then(j=>j.ok?ok(j.result):bad({message:j.error||"Errore"})).catch(e=>bad({message:"Server non raggiungibile ("+(e&&e.message||e)+"). Riprova tra qualche secondo."}));}
+ fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({method:method,idToken:idToken,arg:arg,inviteToken:inviteToken,device:deviceId()})}).then(r=>r.text().then(t=>{let j;try{j=JSON.parse(t)}catch(e){throw new Error("risposta non valida (HTTP "+r.status+")")}return j})).then(j=>j.ok?ok(j.result):bad({message:j.error||"Errore"})).catch(e=>backendHint().then(h=>{backendHintText=h;updateVersions();bad({message:"Server non raggiungibile ("+(e&&e.message||e)+"): "+hintText(h)+"."});}));}
 function setMessage(id,text){$(id).textContent=text||"";}
 function initGoogle(){if(!GOOGLE_CLIENT_ID){setMessage("authMessage","Configurazione incompleta: il proprietario deve impostare GOOGLE_CLIENT_ID nelle Proprietà script.");return;}
  const start=()=>{if(!window.google||!google.accounts||!google.accounts.id){setTimeout(start,200);return;}
@@ -435,13 +435,16 @@ $("refresh").onclick=()=>refreshData();$("refresh2").onclick=()=>refreshData();$
 try{if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost"))navigator.serviceWorker.register("sw.js").catch(()=>{});}catch(e){}
 initGoogle();initInvite();
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&idToken)refreshData();});
-let backendVersion="";
+let backendVersion="",backendHintText="";
+function backendHint(){if(!API_URL)return Promise.resolve("blocked");return fetch(API_URL,{mode:"no-cors",cache:"no-store"}).then(()=>"reachable").catch(()=>"blocked");}
+function hintText(h){return h==="reachable"?"il server risponde ma con un errore (di solito permessi da accettare o versione non pubblicata): avvisa l'amministratore":"questo telefono non riesce a collegarsi al server: controlla la rete, la VPN o il blocco pubblicità";}
 function verCmp(a,b){const pa=String(a).split("."),pb=String(b).split(".");if(pa[0]!==pb[0])return pa[0]<pb[0]?-1:1;return (parseInt(pa[1]||0,10))-(parseInt(pb[1]||0,10));}
-function updateVersions(){const c=window.PADEL_CONFIG||{},f=c.version||"?",min=c.minBackend||"",el=$("versions");const known=backendVersion&&/^\d{4}-/.test(backendVersion);
+function updateVersions(){const c=window.PADEL_CONFIG||{},f=c.version||"?",min=c.minBackend||"",vEl=$("versions");const known=backendVersion&&/^\d{4}-/.test(backendVersion);
  let t="Front end v"+f+" · Backend "+(!backendVersion?"…":(known?"v"+backendVersion:backendVersion));
  if(user&&user.isAdmin&&min&&(known?verCmp(backendVersion,min)<0:backendVersion==="?"))t+=" ⚠ da aggiornare: serve almeno la v"+min+" (incolla Code.gs e crea una nuova versione del deployment)";
- el.textContent=t;el.style.color=(t.indexOf("⚠")>=0)?"#ffd36b":"";}
+ vEl.textContent=t;vEl.style.color=(t.indexOf("⚠")>=0)?"#ffd36b":"";
+ if(backendVersion==="non raggiungibile"&&backendHintText){vEl.append(" — "+hintText(backendHintText)+" · ");const a=el("a",null,"apri il server");a.href=API_URL;a.target="_blank";a.rel="noopener noreferrer";a.style.color="#ffd36b";vEl.append(a);vEl.style.color="#ffd36b";}}
 (function(){const f=(window.PADEL_CONFIG||{}).version||"?";const el=$("versions");el.textContent="Front end v"+f+" · Backend: verifica…";
 if(!API_URL){el.textContent="Front end v"+f+" · Backend: apiUrl mancante";return;}
-fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({method:"version"})}).then(r=>r.json()).then(j=>{backendVersion=j.version||"?";updateVersions();}).catch(()=>{backendVersion="non raggiungibile";updateVersions();});})();
+fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({method:"version"})}).then(r=>r.json()).then(j=>{backendVersion=j.version||"?";updateVersions();}).catch(()=>{backendVersion="non raggiungibile";backendHint().then(h=>{backendHintText=h;updateVersions();});});})();
 </script></body></html>
