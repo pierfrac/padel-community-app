@@ -4,7 +4,7 @@
  * This script is bound to the community spreadsheet.
  */
 const HEADERS = {
-  Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt","photoUrl"],
+  Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt","photoUrl","gender","consentAt","consentVersion"],
   Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId","lineup"],
   Registrations: ["registrationId","matchId","playerId","status","createdAt","partnerId"],
   Shares: ["shareId","matchId","token","label","createdBy","createdAt","openedAt","lastOpenAt","opens","devices","playerId","claimedAt","kind","responses"],
@@ -17,7 +17,10 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-25.3";
+const BACKEND_VERSION = "2026-10-26.1";
+/** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
+const CONSENT_VERSION = "2026-10-26";
+const GENDERS = ["male","female","other"];
 const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
@@ -86,6 +89,7 @@ function getAppData(idToken) {
   const sharesBy=sharesByMatch_(user,players);
   matches.forEach(m => { m.shares=(sharesBy[m.matchId]||[]).filter(sh=>user.isAdmin||m.createdBy===user.playerId||sh.mine); m.registeredCount=counts[m.matchId]||0; m.seatsTaken=m.lineup?m.lineup.filter(x=>x.playerId||x.name).length:m.registeredCount; });
   const mine = players.find(p => p.playerId === user.playerId) || null;
+  if (mine) { const row=readRows_("Players").find(r=>String(r.playerId)===user.playerId); mine.gender=row?String(row.gender||""):""; mine.consentAt=row&&row.consentAt?iso_(row.consentAt):""; mine.consentOk=!!row&&profileComplete_(row); mine.complete=mine.consentOk; }
   const inviteStatus=!CURRENT_INVITE_TOKEN?"":(matches.some(m=>m.lineup&&m.lineup.some(x=>x.mine&&!x.playerId))?"ok":"used");
   return {user:{email:user.email,playerId:user.playerId,isAdmin:user.isAdmin},me:mine,players:players,matches:matches,registrations:registrations,inviteStatus:inviteStatus};
 }
@@ -97,12 +101,17 @@ function saveProfile(idToken, input) {
   const level = clean_(input.skillLevel,30);
   const side = clean_(input.preferredSide,20);
   const allowedLevels = ["Bronze","Silver","Silver-Gold","Gold","Gold+"];
+  const gender = clean_(input.gender,10);
   if (!name || allowedLevels.indexOf(level)<0 || ["right","left","indifferent"].indexOf(side)<0)
     throw new Error("Inserisci nome, livello e lato preferito.");
+  if (GENDERS.indexOf(gender)<0) throw new Error("Scegli maschio, femmina o altro.");
   const sh=sheet_("Players"), rows=readRows_("Players");
   const existing=rows.find(r=>String(r.playerId)===user.playerId);
+  const hasConsent=existing&&String(existing.consentVersion||"")===CONSENT_VERSION&&existing.consentAt;
+  if (!hasConsent&&input.gdpr!==true) throw new Error("Per salvare il profilo devi accettare l'informativa privacy.");
   const photo=input.showPhoto===true?safePhoto_(user.picture):"";
-  const values=[user.playerId,name,user.email,level,side,true,existing?existing.createdAt:new Date(),new Date(),photo];
+  const consentAt=hasConsent?existing.consentAt:new Date();
+  const values=[user.playerId,name,user.email,level,side,true,existing?existing.createdAt:new Date(),new Date(),photo,gender,consentAt,CONSENT_VERSION];
   if(existing) sh.getRange(existing._row,1,1,values.length).setValues([values]); else sh.appendRow(values);
   return {message:"Profilo salvato.",playerId:user.playerId};
 }
@@ -592,9 +601,13 @@ function safePhoto_(url) {
   const u=String(url||"");
   return /^https:\/\/[a-z0-9-]+\.googleusercontent\.com\/[A-Za-z0-9_\-\/=.%:~]{1,400}$/.test(u)?u:"";
 }
+function profileComplete_(r) {
+  return GENDERS.indexOf(String(r.gender||""))>=0&&String(r.consentVersion||"")===CONSENT_VERSION&&!!r.consentAt;
+}
 function requireProfile_(user) {
   const p=readRows_("Players").find(r=>String(r.playerId)===user.playerId&&truthy_(r.active)&&String(r.displayName||"").trim());
   if(!p) throw new Error("Prima di iscriverti o proporre una partita salva il tuo profilo (nome, livello e lato).");
+  if(!profileComplete_(p)) throw new Error("Completa il profilo: scegli maschio, femmina o altro e accetta l'informativa privacy, poi salva.");
   return p;
 }
 function isApprovedEmail_(email) {
