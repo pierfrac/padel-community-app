@@ -435,6 +435,9 @@ $("refresh").onclick=()=>refreshData();$("refresh2").onclick=()=>refreshData();$
 try{if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost"))navigator.serviceWorker.register("sw.js").catch(()=>{});}catch(e){}
 initGoogle();initInvite();
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&idToken)refreshData();});
+/* Every 30 seconds the lists are re-read; skipped while the page is hidden, busy, or someone is typing or editing a lineup. */
+function pollData(){if(document.hidden||!idToken||!data||busyCount)return;const root=$("matches"),a=document.activeElement;if(root.querySelector(".editbox,.sharebox")||(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))return;server("getAppData",null,d=>{if(JSON.stringify(d)===JSON.stringify(data))return;data=d;user=d.user;render();},()=>{});}
+setInterval(pollData,30000);
 let backendVersion="",backendHintText="";
 function backendHint(){if(!API_URL)return Promise.resolve("blocked");return fetch(API_URL,{mode:"no-cors",cache:"no-store"}).then(()=>"reachable").catch(()=>"blocked");}
 function hintText(h){return h==="reachable"?"il server risponde ma con un errore (di solito permessi da accettare o versione non pubblicata): avvisa l'amministratore":"questo telefono non riesce a collegarsi al server: controlla la rete, la VPN o il blocco pubblicità";}

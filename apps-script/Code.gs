@@ -17,7 +17,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.2";
+const BACKEND_VERSION = "2026-10-26.3";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 const GENDERS = ["male","female","other"];
@@ -164,13 +164,45 @@ function registerForMatch(idToken,input) {
     if(lineup) {
       slot=lineup.findIndex(x=>x.playerId===user.playerId);
       if(slot<0) { slot=lineup.findIndex(x=>x.email&&(x.email===user.email||(CURRENT_INVITE_TOKEN&&x.token===CURRENT_INVITE_TOKEN))); if(slot>=0) { approveEmail_(user.email); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:"",token:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); } }
+      if(slot<0) { slot=lineup.findIndex(x=>!x.playerId&&!x.email&&x.name&&sameName_(x.name,profile.displayName)); if(slot>=0) { lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:"",token:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); } }
       if(slot<0) { slot=pickSlot_(lineup,String(profile.preferredSide||"")); if(slot<0) throw new Error("La partita è già completa."); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:"",token:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); }
     } else if(active.length>=4) throw new Error("La partita è già completa.");
     sheet_("Registrations").appendRow([Utilities.getUuid(),matchId,user.playerId,"joined",new Date(),""]);
+    notifyJoin_(match,profile,user);
     return {message:"Iscrizione registrata."};
   } finally {
     lock.releaseLock();
   }
+}
+
+/** A guest typed by the organizer ("Massimiliano") is the same person as a player who registers as "Massimiliano" or "Massimiliano R.". */
+function normName_(t) { return String(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim(); }
+function sameName_(a,b) {
+  a=normName_(a); b=normName_(b); if(!a||!b) return false;
+  if(a===b) return true;
+  return a.length>=3&&b.length>=3&&(b.indexOf(a+" ")===0||a.indexOf(b+" ")===0);
+}
+/** Tells the organizer that somebody took a seat (not for the organizer's own registration). */
+function notifyJoin_(match,profile,user) {
+  try {
+    if(String(match.createdBy)===user.playerId) return;
+    const org=playerMap_()[String(match.createdBy)]; if(!org||!org.email) return;
+    const info={matchId:String(match.matchId),venue:String(match.venue),date:new Date(match.dateTime)};
+    const lu=parseLineup_(sheet_("Matches").getRange(match._row,9).getValue()), taken=lu?lu.filter(x=>x.playerId||x.name||x.email).length:0;
+    mail_(org.email,"✅ "+profile.displayName+" ha accettato: partita di padel del "+whenText_(info.date),
+      "<p>Ciao "+esc_(org.name)+",</p><p><b>"+esc_(profile.displayName)+"</b> si è iscritto alla partita di <b>"+esc_(info.venue)+"</b>, "+esc_(whenText_(info.date))+".</p>"+(lu?"<p>Posti occupati: "+taken+" su 4.</p>":"")+"<p><a href=\""+esc_(appLink_(info))+"\">Apri la partita</a></p>");
+  } catch(err) { console.log("Notifica iscrizione non inviata: "+err); }
+}
+/** Tells everybody who is registered that the match has been marked as completed (feedback can now be left). */
+function notifyCompleted_(row) {
+  try {
+    const pm=playerMap_(), info={matchId:String(row.matchId),venue:String(row.venue),date:new Date(row.dateTime)};
+    readRows_("Registrations").filter(r=>String(r.matchId)===info.matchId&&String(r.status)==="joined").forEach(function(r){
+      const p=pm[String(r.playerId)]; if(!p||!p.email) return;
+      mail_(p.email,"🎾 Partita conclusa: lascia il tuo feedback",
+        "<p>Ciao "+esc_(p.name)+",</p><p>la partita di <b>"+esc_(info.venue)+"</b>, "+esc_(whenText_(info.date))+", è stata segnata come conclusa.</p><p><a href=\""+esc_(appLink_(info))+"\">Apri la partita</a> e lascia il tuo feedback privato sui compagni: resta nel tuo Google Drive.</p>");
+    });
+  } catch(err) { console.log("Notifica partita conclusa non inviata: "+err); }
 }
 
 function cancelRegistration(idToken,input) {
@@ -565,6 +597,7 @@ function completeMatch(idToken,input) {
   const start=new Date(row.dateTime);
   if(isNaN(start.getTime())||Date.now()<start.getTime()+90*60000) throw new Error("La partita può essere segnata conclusa dopo l'orario previsto di fine (90 minuti).");
   sh.getRange(row._row,5).setValue("completed");
+  notifyCompleted_(row);
   return {message:"Partita segnata come conclusa. Ora i partecipanti possono lasciare il feedback privato."};
 }
 
