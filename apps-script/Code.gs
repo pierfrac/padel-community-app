@@ -22,7 +22,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.16";
+const BACKEND_VERSION = "2026-10-26.17";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
@@ -32,9 +32,9 @@ const SESSION_DAYS = 30;
 const SESSION_PREFIX = "s1.";
 /** Default notice, written to the Settings sheet (row "disclaimer") by setupPadelCommunity. The admin edits the text there; the app and the invitations show whatever is in the sheet. */
 const DEFAULT_DISCLAIMER = "Questa app non usa in alcun modo strumenti aziendali e non è collegata con Telespazio.\nCertamente vi chiediamo di mantenere la community limitata a noi e ad eventuali amici e colleghi che volete coinvolgere per riempire i campi. Noi non saremo responsabili né dell'organizzazione né di eventuali disguidi verso i circoli o tra colleghi.";
-/** Match type: "any" = anybody, "mixed" = 2 men + 2 women, "same" = four of the same gender. Players whose gender is "other" (or guests, whose gender is unknown) fit every type. */
+/** Match type: "mixed" = 2 men + 2 women, "same" (standard) = 4 men or 4 women. "any" only remains for matches created before the type existed. Players whose gender is "other" are neutral (they fit anywhere), and so are guests, whose gender is unknown. */
 const MATCH_TYPES = ["any","mixed","same"];
-const TYPE_LABELS = {mixed:"mista",same:"standard (stesso genere)"};
+const TYPE_LABELS = {mixed:"mista (2 uomini + 2 donne)",same:"standard (4 uomini o 4 donne)"};
 const GENDERS = ["male","female","other"];
 const API_METHODS = ["getSettings","getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","startSession","endSession","setLineup","resendInvite","setCourt","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
 
@@ -720,7 +720,7 @@ function checkType_(type,genders) {
   if(type!=="mixed"&&type!=="same") return;
   const m=genders.filter(g=>g==="male").length, f=genders.filter(g=>g==="female").length;
   if(type==="mixed"&&(m>2||f>2)) throw new Error("Partita mista: servono 2 uomini e 2 donne, al massimo (ora "+m+" uomini e "+f+" donne).");
-  if(type==="same"&&m>0&&f>0) throw new Error("Partita standard: devono giocare tutti dello stesso genere (ci sono sia uomini che donne).");
+  if(type==="same"&&m>0&&f>0) throw new Error("Partita standard: devono giocare 4 uomini oppure 4 donne (ora ci sono sia uomini che donne).");
 }
 /** A person joins a free seat of a typed match: the seats already taken must leave room for their gender. */
 function checkJoin_(type,lineup,slot,gender) {
@@ -728,7 +728,7 @@ function checkJoin_(type,lineup,slot,gender) {
   const others=lineup.map((x,i)=>i===slot||!x.playerId?"":genderOfPlayer_(x.playerId));
   const m=others.filter(g=>g==="male").length, f=others.filter(g=>g==="female").length;
   if(type==="mixed"&&((gender==="male"&&m>=2)||(gender==="female"&&f>=2))) throw new Error("Questa partita è mista (2 uomini e 2 donne): i posti per "+(gender==="male"?"gli uomini":"le donne")+" sono già occupati.");
-  if(type==="same"&&((gender==="male"&&f>0)||(gender==="female"&&m>0))) throw new Error("Questa partita è standard (tutti dello stesso genere) e c'è già chi gioca di un genere diverso dal tuo.");
+  if(type==="same"&&((gender==="male"&&f>0)||(gender==="female"&&m>0))) throw new Error("Questa partita è standard (4 uomini o 4 donne) e c'è già chi gioca di un genere diverso dal tuo.");
 }
 
 /** Admin only (ADMIN_EMAILS): deletes all matches and registrations, optionally the player profiles too. Needs the confirmation word. */
