@@ -21,7 +21,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.11";
+const BACKEND_VERSION = "2026-10-26.12";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
@@ -117,10 +117,11 @@ function communityLink_(token) {
 }
 function sendCommunityInvite_(email, token, inviterName) {
   const c = communityName_(), link = communityLink_(token);
-  mail_(email, "🎾 " + inviterName + " ti invita nella community " + c,
+  invite_(email, email, "🎾 " + inviterName + " ti invita nella community " + c,
     "<p>Ciao,</p><p><b>" + esc_(inviterName) + "</b> ti invita a entrare nella community di padel <b>" + esc_(c) + "</b>: qui si organizzano le partite e si vede chi c'è.</p>" +
     "<p><a href=\"" + esc_(link) + "\">Entra in " + esc_(c) + "</a>, <b>accedi con Google</b> e compila il tuo profilo (nome, livello, lato preferito). Va bene qualsiasi account Google, anche diverso da questo indirizzo (" + esc_(email) + "): il link riconosce il tuo invito.</p>" +
-    "<p style=\"color:#666;font-size:13px\">Non serve una Gmail: se non hai un account Google puoi crearne uno con un indirizzo email già tuo: <a href=\"https://accounts.google.com/signup\">accounts.google.com/signup</a>.</p>");
+    "<p style=\"color:#666;font-size:13px\">Non serve una Gmail: se non hai un account Google puoi crearne uno con un indirizzo email già tuo: <a href=\"https://accounts.google.com/signup\">accounts.google.com/signup</a>.</p>",
+    "Ciao,\n" + inviterName + " ti invita a entrare nella community di padel " + c + ": qui si organizzano le partite e si vede chi c'è.\n\nEntra qui, accedi con Google (va bene qualsiasi account, anche diverso da questo indirizzo) e compila il tuo profilo:\n" + link + "\n");
 }
 /** Admin only: invites people to the community without any match. */
 function inviteToCommunity(idToken,input) {
@@ -141,7 +142,7 @@ function inviteToCommunity(idToken,input) {
     emails.forEach(function(e) {
       if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(e)) { out.invalid.push(e); return; }
       if (members[e]) { out.already.push(e); return; }
-      let quota = 1; try { quota = MailApp.getRemainingDailyQuota(); } catch(err) {}
+      let quota = 1; if (!inviteViaMailto_()) { try { quota = MailApp.getRemainingDailyQuota(); } catch(err) {} }
       if (quota < 1) { out.noQuota.push(e); return; }
       const old = invites.find(function(r){ return String(r.community||"").toLowerCase() === c.toLowerCase() && String(r.email||"").trim().toLowerCase() === e; });
       if (old) { sendCommunityInvite_(e, String(old.token), inviter); out.resent.push(e); return; }
@@ -151,12 +152,12 @@ function inviteToCommunity(idToken,input) {
       out.sent.push(e);
     });
     const parts = [];
-    if (out.sent.length) parts.push(out.sent.length + " inviti inviati");
-    if (out.resent.length) parts.push(out.resent.length + " inviti rimandati");
+    const mt = inviteViaMailto_(); if (out.sent.length) parts.push(out.sent.length + (mt ? " email pronte" : " inviti inviati"));
+    if (out.resent.length) parts.push(out.resent.length + (mt ? " email pronte (invito già creato)" : " inviti rimandati"));
     if (out.already.length) parts.push(out.already.length + " già nella community");
     if (out.invalid.length) parts.push(out.invalid.length + " indirizzi non validi (" + out.invalid.join(", ") + ")");
     if (out.noQuota.length) parts.push(out.noQuota.length + " non inviati: limite giornaliero di email raggiunto");
-    return {message: parts.join(", ") + ".", result: out};
+    return {message: parts.join(", ") + ".", result: out, drafts: takeDrafts_()};
   } finally {
     lock.releaseLock();
   }
@@ -265,7 +266,7 @@ function createMatch(idToken,input) {
   sendInvites_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},profile.displayName,lineup.newInvites);
   sendEmailInvites_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},profile.displayName,lineup.newEmailInvites);
   sendOrganizerSummary_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},user.email,profile.displayName,lineup);
-  return {matchId:id,mailWarning:mailWarning_(),message:calendarId?"Partita creata e aggiunta al calendario.":"Partita creata. Calendar non è ancora configurato."};
+  return {matchId:id,drafts:takeDrafts_(),mailWarning:mailWarning_(),message:calendarId?"Partita creata e aggiunta al calendario.":"Partita creata. Calendar non è ancora configurato."};
 }
 
 function registerForMatch(idToken,input) {
@@ -363,7 +364,7 @@ function resendInvite(idToken,input) {
     const warn=mailWarning_(); if(warn) throw new Error(warn);
     slot.invitedAt=new Date().toISOString(); slot.reminded=false;
     sheet_("Matches").getRange(row._row,9).setValue(JSON.stringify(lineup));
-    return {message:"Invito rimandato."};
+    return {message:inviteViaMailto_()?"Email pronta: aprila e premi invia.":"Invito rimandato.",drafts:takeDrafts_()};
   } finally {
     lock.releaseLock();
   }
@@ -399,7 +400,7 @@ function setLineup(idToken,input) {
     const ownerRow=readRows_("Players").find(r=>String(r.playerId)===String(row.createdBy));
     sendInvites_({matchId:String(row.matchId),venue:venueLabel_(row),date:new Date(row.dateTime)},ownerRow?String(ownerRow.displayName):"L'organizzatore",lineup.newInvites.filter(id=>joined.indexOf(id)<0));
     sendEmailInvites_({matchId:String(row.matchId),venue:venueLabel_(row),date:new Date(row.dateTime)},ownerRow?String(ownerRow.displayName):"L'organizzatore",lineup.newEmailInvites);
-    const warn=mailWarning_(); return {message:"Formazione aggiornata."+(warn?" "+warn:""),mailWarning:warn};
+    const warn=mailWarning_(); return {message:"Formazione aggiornata."+(warn?" "+warn:""),mailWarning:warn,drafts:takeDrafts_()};
   } finally {
     lock.releaseLock();
   }
@@ -422,6 +423,14 @@ function mail_(to,subject,html) {
   try { MailApp.sendEmail({to:String(to),subject:subject,htmlBody:html,name:"Padel Community"}); return true; }
   catch(err) { console.log("Email non inviata a "+to+": "+err); MAIL_ERRORS.push(String(to)+" ("+String(err&&err.message||err).slice(0,120)+")"); return false; }
 }
+/** Invitations are not sent by the app but prepared for the organizer's own mail app (default). Set the script property INVITE_MAIL to "app" to send them from the script instead. */
+var MAIL_DRAFTS = [];
+function inviteViaMailto_() { return (PropertiesService.getScriptProperties().getProperty("INVITE_MAIL")||"mailto").toLowerCase()!=="app"; }
+function invite_(to,name,subject,html,text) {
+  if(inviteViaMailto_()) { if(to) MAIL_DRAFTS.push({to:String(to),name:String(name||""),subject:subject,text:text}); else MAIL_ERRORS.push("indirizzo email mancante"); return true; }
+  return mail_(to,subject,html);
+}
+function takeDrafts_() { const d=MAIL_DRAFTS; MAIL_DRAFTS=[]; return d; }
 function mailWarning_() {
   if(!MAIL_ERRORS.length) return "";
   const w="Attenzione: non sono riuscito a mandare l'email a "+MAIL_ERRORS.join("; ")+". Controlla che l'amministratore abbia eseguito testMail e autorizzato l'invio, oppure usa «Reinvia email».";
@@ -439,13 +448,14 @@ function playerMap_() {
 function sendEmailInvites_(match,organizerName,invites) {
   if(!invites||!invites.length) return;
   try {
-    invites.forEach(function(inv){ const email=inv.email, link=appLink_(match,inv.token);
-      mail_(email,"🎾 "+organizerName+" ti ha invitato a una partita di padel",
+    invites.forEach(function(inv){ const email=inv.email, link=appLink_(match,inv.token), subject="🎾 "+organizerName+" ti ha invitato a una partita di padel";
+      invite_(email,email,subject,
         "<p>Ciao,</p><p><b>"+esc_(organizerName)+"</b> ti ha invitato a una partita di padel:</p>"+
         "<p><b>"+esc_(match.venue)+"</b><br>"+esc_(whenText_(match.date))+"</p>"+
         "<p>Ti abbiamo riservato un posto. Per prenderlo: <a href=\""+esc_(link)+"\">apri la partita</a>, <b>accedi con Google</b>, salva il tuo profilo (nome, livello e lato preferito) e premi “Accetta invito”. Puoi usare qualsiasi account Google, anche diverso da questo indirizzo ("+esc_(email)+"): il link riconosce il tuo invito.</p>"+
         "<p style=\"color:#666;font-size:13px\">Non serve una Gmail: va bene qualsiasi account Google (anche di lavoro o scuola). Se non ne hai uno, puoi crearne uno con questo stesso indirizzo email o con un altro: <a href=\"https://accounts.google.com/signup\">accounts.google.com/signup</a> (scegli «Usa il mio indirizzo email attuale»).</p>"+
-        "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore: se la partita è tra più di "+REMINDER_MIN_DAYS_LEFT+" giorni ti mandiamo un promemoria, altrimenti il posto viene liberato e l'organizzatore viene avvisato.</p>");
+        "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore: se la partita è tra più di "+REMINDER_MIN_DAYS_LEFT+" giorni ti mandiamo un promemoria, altrimenti il posto viene liberato e l'organizzatore viene avvisato.</p>",
+        "Ciao,\n"+organizerName+" ti ha invitato a una partita di padel:\n"+match.venue+"\n"+whenText_(match.date)+"\n\nTi abbiamo riservato un posto. Per prenderlo apri la partita, accedi con Google (va bene qualsiasi account, anche diverso da questo indirizzo), salva il tuo profilo e premi “Accetta invito”:\n"+link+"\n\nSe non rispondi entro 24 ore e la partita è entro "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto viene liberato.\n");
     });
   } catch(err) { console.log("Inviti email non inviati: "+err); }
 }
@@ -458,11 +468,12 @@ function sendInvitesUnsafe_(match,organizerName,playerIds) {
   const pm=playerMap_();
   playerIds.forEach(function(id){
     const p=pm[id]; if(!p||!p.email) { MAIL_ERRORS.push("un giocatore senza indirizzo email nel profilo"); return; }
-    mail_(p.email,"🎾 "+organizerName+" ti ha invitato a una partita di padel",
+    invite_(p.email,p.name,"🎾 "+organizerName+" ti ha invitato a una partita di padel",
       "<p>Ciao "+esc_(p.name)+",</p><p><b>"+esc_(organizerName)+"</b> ti ha invitato a una partita di padel:</p>"+
       "<p><b>"+esc_(match.venue)+"</b><br>"+esc_(whenText_(match.date))+"</p>"+
       "<p>Ti abbiamo riservato un posto. <a href=\""+esc_(appLink_(match))+"\">Apri la partita e premi “Accetta invito”</a>.</p>"+
-      "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore: se la partita è tra più di "+REMINDER_MIN_DAYS_LEFT+" giorni ti mandiamo un promemoria, altrimenti il posto viene liberato e l'organizzatore viene avvisato.</p>");
+      "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore: se la partita è tra più di "+REMINDER_MIN_DAYS_LEFT+" giorni ti mandiamo un promemoria, altrimenti il posto viene liberato e l'organizzatore viene avvisato.</p>",
+      "Ciao "+p.name+",\n"+organizerName+" ti ha invitato a una partita di padel:\n"+match.venue+"\n"+whenText_(match.date)+"\n\nTi abbiamo riservato un posto. Apri la partita e premi “Accetta invito”:\n"+appLink_(match)+"\n");
   });
 }
 
