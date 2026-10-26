@@ -11,6 +11,7 @@ const HEADERS = {
   Devices: ["deviceId","playerId","firstSeen","lastSeen"],
   Communities: ["name","note"],
   Admins: ["email","community","note"],
+  Sessions: ["tokenHash","email","sub","picture","createdAt","expiresAt"],
   Invites: ["email","community","invitedBy","invitedAt","token","joinedAt","label","joins"],
   FeedbackPrivate: ["DO_NOT_USE"]
 };
@@ -20,13 +21,16 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.8";
+const BACKEND_VERSION = "2026-10-26.9";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
 const DEFAULT_COMMUNITY = "Telespadel";
+/** After one Google login the app gets its own session code, valid this many days, so people sign in about once a month. */
+const SESSION_DAYS = 30;
+const SESSION_PREFIX = "s1.";
 const GENDERS = ["male","female","other"];
-const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","setCourt","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
+const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","startSession","endSession","setLineup","setCourt","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 var CURRENT_INVITE_TOKEN = "";
@@ -50,7 +54,7 @@ function setupPadelCommunity() {
   const sid = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
   const ss = sid ? SpreadsheetApp.openById(sid) : SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error("Apri Apps Script dal foglio Google oppure imposta SPREADSHEET_ID nelle Proprietà script.");
-  ["Players","Matches","Registrations","Shares","Devices","Communities","Admins","Invites"].forEach(function(name) {
+  ["Players","Matches","Registrations","Shares","Devices","Communities","Admins","Invites","Sessions"].forEach(function(name) {
     let sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
     if (sh.getLastRow() === 0) {
@@ -746,17 +750,62 @@ function cancelMatch(idToken,input) {
 /** Calendar events use the configured community calendar; no private feedback is written to Sheets. */
 function verifyUser_(idToken) {
   if(!idToken) throw new Error("Accedi con Google per continuare.");
-  const props=PropertiesService.getScriptProperties(), clientId=props.getProperty("GOOGLE_CLIENT_ID");
+  const idt=String(idToken);
+  const ident=idt.indexOf(SESSION_PREFIX)===0?sessionIdentity_(idt):googleIdentity_(idt);
+  return admitUser_(ident);
+}
+/** Checks a Google ID token with Google and returns who it belongs to. */
+function googleIdentity_(idToken) {
+  const clientId=PropertiesService.getScriptProperties().getProperty("GOOGLE_CLIENT_ID");
   if(!clientId) throw new Error("Configurazione incompleta: manca GOOGLE_CLIENT_ID nelle Proprietà script.");
   const response=UrlFetchApp.fetch("https://oauth2.googleapis.com/tokeninfo?id_token="+encodeURIComponent(idToken),{muteHttpExceptions:true});
   if(response.getResponseCode()!==200) throw new Error("Accesso Google non verificato. Ricarica la pagina e accedi di nuovo.");
   const token=JSON.parse(response.getContentText());
   if(token.aud!==clientId||token.email_verified!=="true"||!token.email||!token.sub) throw new Error("Credenziali Google non valide per questa app.");
   const exp=Number(token.exp||0); if(exp*1000<Date.now()) throw new Error("Sessione Google scaduta. Accedi di nuovo.");
-  const email=String(token.email).toLowerCase();
+  return {email:String(token.email).toLowerCase(),sub:String(token.sub),picture:String(token.picture||"")};
+}
+/** Applies the community rules (allow-list, invitations, admin sheet) to an identity, whichever way it was proven. */
+function admitUser_(ident) {
+  const props=PropertiesService.getScriptProperties(), email=ident.email;
   const allowedEmails=(props.getProperty("ALLOWED_EMAILS")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
   if(allowedEmails.length && allowedEmails.indexOf(email)<0 && !isApprovedEmail_(email) && !hasEmailInvite_(email) && !hasTokenInvite_() && !hasCommunityInvite_(email)) throw new Error("Questo account non è ancora abilitato alla community. Chiedi a chi ti ha invitato o all'amministratore di aggiungere il tuo indirizzo.");
-  return {email:email,playerId:"google:"+token.sub,isAdmin:isAdminEmail_(email),picture:String(token.picture||"")};
+  return {email:email,playerId:"google:"+ident.sub,isAdmin:isAdminEmail_(email),picture:ident.picture};
+}
+function hashToken_(t) { return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,String(t))); }
+function sessionIdentity_(code) {
+  let row=null;
+  try { const h=hashToken_(code); row=readRows_("Sessions").find(r=>String(r.tokenHash)===h); } catch(e) {}
+  if(!row) throw new Error("Sessione non valida. Accedi di nuovo con Google.");
+  if(new Date(row.expiresAt).getTime()<Date.now()) throw new Error("Sessione scaduta. Accedi di nuovo con Google.");
+  return {email:String(row.email),sub:String(row.sub),picture:String(row.picture||"")};
+}
+/** Called right after a Google login: returns a code the app keeps for SESSION_DAYS days. Only a fresh Google token can open a session. */
+function startSession(idToken) {
+  if(String(idToken||"").indexOf(SESSION_PREFIX)===0) throw new Error("Per rinnovare la sessione accedi di nuovo con Google.");
+  const ident=googleIdentity_(String(idToken||"")); admitUser_(ident);
+  const lock=LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    const sh=sheet_("Sessions"), now=Date.now(), rows=readRows_("Sessions");
+    // Tidy up: expired rows, and keep at most 5 live sessions per address (oldest go first).
+    const mine=rows.filter(r=>String(r.email)===ident.email&&new Date(r.expiresAt).getTime()>=now).sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt));
+    const drop=rows.filter(r=>new Date(r.expiresAt).getTime()<now).concat(mine.slice(0,Math.max(0,mine.length-4))).map(r=>r._row).sort((a,b)=>b-a);
+    drop.forEach(n=>sh.deleteRows(n,1));
+    const code=SESSION_PREFIX+Utilities.getUuid().replace(/-/g,"")+Utilities.getUuid().replace(/-/g,"");
+    const exp=new Date(now+SESSION_DAYS*24*60*60*1000);
+    sh.appendRow([hashToken_(code),ident.email,ident.sub,ident.picture,new Date(now),exp]);
+    // An address admitted through an invitation keeps its access for the next logins too.
+    try { if((PropertiesService.getScriptProperties().getProperty("ALLOWED_EMAILS")||"").trim()) approveEmail_(ident.email); } catch(e) {}
+    return {session:code,expiresAt:exp.toISOString(),days:SESSION_DAYS};
+  } finally {
+    lock.releaseLock();
+  }
+}
+/** Sign out: the session code stops working at once. */
+function endSession(idToken) {
+  const code=String(idToken||""); if(code.indexOf(SESSION_PREFIX)!==0) return {ended:false};
+  try { const h=hashToken_(code), r=readRows_("Sessions").find(x=>String(x.tokenHash)===h); if(r) { sheet_("Sessions").deleteRows(r._row,1); return {ended:true}; } } catch(e) {}
+  return {ended:false};
 }
 
 function safePhoto_(url) {
