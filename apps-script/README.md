@@ -35,7 +35,7 @@ Questa configurazione va fatta una sola volta dal proprietario del progetto.
 Nell'editor Apps Script apri Impostazioni progetto → Proprietà script e crea:
 
 - GOOGLE_CLIENT_ID: il Client ID OAuth appena creato.
-- ADMIN_EMAILS: solo per la prima installazione: `setupPadelCommunity` ne copia gli indirizzi nella scheda **Admins** del foglio. Da lì in poi gli amministratori si gestiscono solo nella scheda **Admins** (colonna `email`; la colonna `community` resta `Telespadel`, o vuota). Finché la scheda non ha righe vale ancora ADMIN_EMAILS.
+- ADMIN_EMAILS: solo per la prima installazione: `setupPadelCommunity` ne copia gli indirizzi nella scheda **Admins** del foglio. Da lì in poi gli amministratori si gestiscono solo nella scheda **Admins** (colonna `email`: scelta da un elenco a tendina con gli indirizzi della scheda Players; colonna `community`: scelta dalla scheda **Communities**). Chi gestisce più community ha una riga per ciascuna. Finché la scheda non ha righe vale ancora ADMIN_EMAILS.
 - COMMUNITY_NAME (facoltativa): nome di questa community, di default `Telespadel`.
 
 ### Inviti nella community (solo amministratori)

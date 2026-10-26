@@ -9,6 +9,7 @@ const HEADERS = {
   Registrations: ["registrationId","matchId","playerId","status","createdAt","partnerId"],
   Shares: ["shareId","matchId","token","label","createdBy","createdAt","openedAt","lastOpenAt","opens","devices","playerId","claimedAt","kind","responses"],
   Devices: ["deviceId","playerId","firstSeen","lastSeen"],
+  Communities: ["name","note"],
   Admins: ["email","community","note"],
   Invites: ["email","community","invitedBy","invitedAt","token","joinedAt","label","joins"],
   FeedbackPrivate: ["DO_NOT_USE"]
@@ -19,7 +20,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.6";
+const BACKEND_VERSION = "2026-10-26.7";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
@@ -49,12 +50,13 @@ function setupPadelCommunity() {
   const sid = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
   const ss = sid ? SpreadsheetApp.openById(sid) : SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error("Apri Apps Script dal foglio Google oppure imposta SPREADSHEET_ID nelle Proprietà script.");
-  ["Players","Matches","Registrations","Shares","Devices","Admins","Invites"].forEach(function(name) {
+  ["Players","Matches","Registrations","Shares","Devices","Communities","Admins","Invites"].forEach(function(name) {
     let sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
     if (sh.getLastRow() === 0) {
       sh.getRange(1,1,1,HEADERS[name].length).setValues([HEADERS[name]]);
       sh.setFrozenRows(1);
+      if (name === "Communities") sh.getRange(2,1,1,2).setValues([[communityName_(),"community attuale"]]);
       if (name === "Admins") {
         // First run: start from the old ADMIN_EMAILS property; from now on the sheet is the single list.
         const old = (PropertiesService.getScriptProperties().getProperty("ADMIN_EMAILS")||"").split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
@@ -75,9 +77,20 @@ function setupPadelCommunity() {
       sh.setFrozenRows(1);
     }
   });
+  applyLookups_(ss);
   return "Struttura pronta. Ora configura GOOGLE_CLIENT_ID nelle Proprietà script. Gli amministratori si gestiscono nella scheda Admins.";
 }
 
+/** Drop-down lists in the sheet so addresses and community names are picked, not typed: no typos. */
+function applyLookups_(ss) {
+  try {
+    const players = ss.getSheetByName("Players"), comms = ss.getSheetByName("Communities"), admins = ss.getSheetByName("Admins"), invites = ss.getSheetByName("Invites");
+    const rule = function(range, msg) { return SpreadsheetApp.newDataValidation().requireValueInRange(range, true).setAllowInvalid(false).setHelpText(msg).build(); };
+    if (admins && players) admins.getRange("A2:A1000").setDataValidation(rule(players.getRange("C2:C1000"), "Scegli un indirizzo dalla scheda Players (la persona deve essere già nella community)."));
+    if (admins && comms) admins.getRange("B2:B1000").setDataValidation(rule(comms.getRange("A2:A100"), "Scegli una community dalla scheda Communities."));
+    if (invites && comms) invites.getRange("B2:B1000").setDataValidation(rule(comms.getRange("A2:A100"), "Scegli una community dalla scheda Communities."));
+  } catch(err) { console.log("Elenchi a tendina non applicati: " + err); }
+}
 function communityName_() { return PropertiesService.getScriptProperties().getProperty("COMMUNITY_NAME") || DEFAULT_COMMUNITY; }
 /** Admins live in the "Admins" sheet (column email; column community empty or equal to this community). Until that sheet has rows, the old ADMIN_EMAILS property still works. */
 function isAdminEmail_(email) {
