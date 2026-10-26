@@ -123,7 +123,7 @@ dialog.info{border-radius:22px}dialog.info::backdrop{background:rgba(8,4,40,.65)
 <button type="button" role="tab" data-tab="matches" aria-selected="false">📅<span>Partite</span></button>
 </nav>
 </div>
-<footer class="muted small" style="padding:18px 4px"><br><button class="secondary" id="howTo" type="button">Come funziona</button><br><span id="versions">Versioni: caricamento…</span></footer>
+<footer class="muted small" style="padding:18px 4px"><br><button class="secondary" id="howTo" type="button">Come funziona</button> <button class="secondary" id="helpOpen" type="button">Aiuto</button><br><span id="versions">Versioni: caricamento…</span></footer>
 </main>
 <dialog id="privacyDlg" class="info" aria-labelledby="pvTitle"><h3 id="pvTitle">Informativa privacy</h3>
 <p class="muted small">Versione del <span id="pvDate">26 ottobre 2026</span> · valida per Padel Community.</p>
@@ -141,6 +141,50 @@ dialog.info{border-radius:22px}dialog.info::backdrop{background:rgba(8,4,40,.65)
 <p class="muted small">I feedback privati restano nel Drive di ciascuno.</p>
 <label for="resetConfirm">Scrivi CANCELLA per confermare</label><input id="resetConfirm" autocomplete="off" placeholder="CANCELLA">
 <div class="rowbuttons"><button id="resetCancel" class="secondary" type="button">Annulla</button><button id="resetGo" class="danger" type="button">Cancella tutto</button></div><div id="resetMsg" class="msg" role="status"></div></dialog>
+<dialog id="helpDlg" class="info" aria-labelledby="hlTitle"><h3 id="hlTitle">Aiuto</h3>
+<p class="muted small">Padel Community · <span id="helpCommunity">Telespadel</span>. Tocca un argomento per aprirlo.</p>
+<details><summary><b>Primi passi</b></summary>
+<p>Accedi con Google. Alla prima volta vai in <b>Profilo</b> e compila nome, livello, lato preferito (destra, sinistra o indifferente) e genere, poi accetta l'informativa privacy e premi <b>Salva profilo</b>. Senza profilo completo non puoi iscriverti né creare partite.</p>
+<p>Va bene qualsiasi account Google, non serve una Gmail. La foto è facoltativa: compare solo se spunti la casella.</p></details>
+<details><summary><b>Proporre una partita</b></summary>
+<p>Nella scheda <b>Crea partita</b> scegli il <b>circolo</b>: scrivi il nome e ti proponiamo quelli già usati o trovati online (anche con piccoli errori di battitura); l'indirizzo è facoltativo. Poi data e ora.</p>
+<p>I <b>4 box</b> sono i posti: la coppia 1 e la coppia 2, ognuna con un posto a destra (D) e uno a sinistra (S). In ogni box puoi:</p>
+<ul><li>scegliere un giocatore della community: riceve un invito e un posto riservato;</li>
+<li>scrivere un nome senza app: resta come <b>ospite</b>;</li>
+<li>scrivere un'<b>email</b>: se è già nell'app la riconosciamo, altrimenti riceve un link d'invito.</li></ul>
+<p>Tu occupi sempre uno dei quattro posti. Quando scegli un giocatore vedi il <b>Match</b> (da 0 a 100): è la media tra la compatibilità con te e quella con il tuo compagno di coppia, più un bonus o una penalità se il lato in cui lo metti è quello che preferisce.</p></details>
+<details><summary><b>Iscriversi, accettare un invito, annullare</b></summary>
+<p>Nella scheda <b>Partite</b> apri una partita e premi <b>Mi iscrivo</b>, oppure <b>Accetta invito</b> se ti hanno riservato un posto. Se cambi idea premi <b>Annulla iscrizione</b>: il posto si libera.</p>
+<p>Se l'organizzatore ha scritto il tuo nome come ospite, quando ti iscrivi con lo stesso nome prendi quel posto.</p>
+<p>Un invito senza risposta dopo 24 ore: se la partita è tra più di 4 giorni arriva un promemoria; altrimenti il posto torna libero e l'organizzatore viene avvisato.</p></details>
+<details><summary><b>Le tre sezioni delle partite</b></summary>
+<p><b>Aperte</b>: c'è ancora almeno un posto da riempire o un invito da accettare. <b>Confermate</b>: i 4 posti sono occupati. <b>Passate</b>: concluse o già iniziate da più di 90 minuti (la sezione è chiusa, toccala per aprirla).</p>
+<p>L'elenco si aggiorna da solo ogni 30 secondi. Non si aggiorna mentre scrivi in un campo o stai modificando una formazione.</p></details>
+<details><summary><b>Condividere una partita (WhatsApp, link, QR)</b></summary>
+<p>Dopo aver creato la partita, o dalla sua scheda con <b>Condividi</b>, scegli:</p>
+<ul><li><b>Link per una persona</b>: scrivi il suo nome; vedi se ha aperto il link.</li>
+<li><b>Link per una chat o gruppo</b>: vedi quante persone lo aprono e chi risponde «Ci sono», anche senza accedere.</li></ul>
+<p>Poi usa <b>WhatsApp</b>, <b>Email</b>, <b>Copia link</b>, <b>QR code</b> o <b>Altro…</b>. Chi ha già usato l'app da quel telefono viene riconosciuto per nome; se non è lui, tocca «Non sei tu? Cambia».</p></details>
+<details><summary><b>Gestire la tua partita</b></summary>
+<p>Nella scheda della partita, se l'hai creata tu: <b>Modifica formazione</b> (cambia i posti, ma non togli chi è già iscritto: deve annullare lui), <b>Segna conclusa</b> (dopo l'orario di fine, 90 minuti) e <b>Annulla partita</b> (sparisce per tutti).</p>
+<p>Quando qualcuno si iscrive ricevi un'email; quando la segni conclusa gli iscritti ricevono l'email per il feedback.</p></details>
+<details><summary><b>Feedback privato</b></summary>
+<p>Dopo che la partita è conclusa ogni iscritto può lasciare un giudizio sui compagni. Resta nel <b>tuo Google Drive</b>: l'organizzatore e gli altri non lo vedono. Serve solo a migliorare i suggerimenti per te.</p></details>
+<details><summary><b>Qualcosa non funziona</b></summary>
+<ul><li><b>«Server non raggiungibile»</b>: ricarica la pagina; se persiste, avvisa l'amministratore (di solito il backend non è aggiornato).</li>
+<li><b>«Questo account non è ancora abilitato»</b>: apri di nuovo il link d'invito che hai ricevuto, oppure chiedi di essere invitato.</li>
+<li><b>«Completa il profilo»</b>: scegli il genere e accetta l'informativa nella scheda Profilo.</li>
+<li><b>La pagina sembra vecchia</b>: chiudi e riapri l'app. In fondo alla pagina i numeri di versione di sito e backend devono coincidere.</li>
+<li><b>Il posto da ospite non diventa il mio account</b>: iscriviti con lo stesso nome oppure chiedi all'organizzatore di rimettere il tuo nome.</li></ul></details>
+<div id="helpAdmin" hidden><details><summary><b>🛠 Per gli amministratori</b></summary>
+<p><b>Chi è admin.</b> Dipende dalla scheda <b>Admins</b> del foglio Google: una riga per ogni persona e community. L'email si sceglie da un elenco (la persona deve essere già nella community) e la community dalla scheda <b>Communities</b>. Per togliere un admin cancella la riga.</p>
+<p><b>Invitare nella community</b> (nella scheda Profilo, riquadro «Strumenti amministratore»):</p>
+<ul><li><b>Via email</b>: incolla fino a 20 indirizzi, uno per riga o separati da virgole. A ciascuno arriva un link d'invito.</li>
+<li><b>Con un link</b>: dai un nome (es. «Gruppo WhatsApp Telespadel») e premi <b>Crea link</b>; poi WhatsApp, Copia link o QR code. Lo stesso link vale per più persone e vedi quante sono entrate.</li></ul>
+<p>Chi entra da un invito resta ammesso anche se l'accesso è ristretto, ma deve comunque compilare il profilo.</p>
+<p><b>Dati di prova.</b> «Cancella tutti i dati di prova» elimina partite, iscrizioni e link; chi vuole può eliminare anche i profili. Si conferma scrivendo CANCELLA.</p>
+<p><b>Aggiornare il backend.</b> Dopo ogni nuovo Code.gs: salva, esegui <code>setupPadelCommunity</code>, poi Distribuisci → Gestisci distribuzioni → matita → <b>Nuova versione</b>. Apri l'URL /exec: deve mostrare la stessa versione del footer.</p></details></div>
+<button id="helpClose" type="button">Chiudi</button></dialog>
 <dialog id="manageInfo" class="info" aria-labelledby="miTitle"><h3 id="miTitle">Inviti, cancellazione e gestione</h3>
 <p><b>📩 Inviti</b><br>Chi inviti riceve un'email e un posto riservato: anche se non è ancora nell'app basta scrivere la sua email nel posto, accederà con Google (anche con un account diverso: il link riconosce l'invito, non serve una Gmail). Se non risponde entro 24 ore: con la partita a più di 4 giorni gli arriva un promemoria; con la partita entro 4 giorni l'invito viene annullato, il posto torna libero e tu ricevi un avviso via email.</p>
 <p><b>🔗 Link fuori dall'app</b><br>Quando condividi su WhatsApp o in altri modi puoi creare un link per una persona (vedi se lo apre) o per una chat o gruppo (vedi quanti lo aprono e chi risponde «Ci sono», anche senza accedere). Se la persona ha già usato l'app da quel telefono la riconosci per nome anche senza che acceda, e con un tocco può rispondere. Chi lo apre vede un avviso che il link è tracciato.</p>
@@ -414,6 +458,7 @@ function fmtDate(iso){const d=new Date(iso);return isNaN(d.getTime())?"":d.toLoc
 function updateConsentUI(me){const ok=!!(me&&me.consentOk);$("consentBox").hidden=ok;$("gdpr").required=!ok;const done=$("consentDone");done.hidden=!ok;done.replaceChildren();if(ok){done.append("✓ Informativa privacy accettata il "+fmtDate(me.consentAt)+" · ");const a=el("a",null,"rivedi");a.href="#";a.onclick=e=>{e.preventDefault();openPrivacy();};done.append(a);}
  if(me&&me.complete===false)setMessage("profileMsg","Per continuare scegli il genere e accetta l'informativa privacy, poi premi «Salva profilo».");}
 function openPrivacy(){const c=window.PADEL_CONFIG||{};if(c.controllerName){$("pvController").textContent="Titolare del trattamento: "+c.controllerName+(c.controllerEmail?" ("+c.controllerEmail+")":"")+".";}if(c.controllerEmail)$("pvContact").textContent="Per esercitarli scrivi a "+c.controllerEmail+".";$("privacyDlg").showModal();}
+$("helpOpen").onclick=()=>{$("helpAdmin").hidden=!(user&&user.isAdmin);if(data&&data.community)$("helpCommunity").textContent=data.community;$("helpDlg").showModal();};$("helpClose").onclick=()=>$("helpDlg").close();
 $("privacyLink").onclick=e=>{e.preventDefault();openPrivacy();};$("privacyClose").onclick=()=>$("privacyDlg").close();
 function manageInfoSeen(){try{return localStorage.getItem("padelManageInfoSeen")==="1";}catch(e){return false;}}
 function showManageInfo(){const d=$("manageInfo");if(!d.open)d.showModal();}
