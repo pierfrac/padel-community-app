@@ -1,6 +1,6 @@
 // Compila questi due valori prima della pubblicazione (nessun segreto: sono valori pubblici).
 window.PADEL_CONFIG = {
-  version: "2026-10-26.4",
+  version: "2026-10-26.5",
   minBackend: "2026-10-26.3",  // backend minimo atteso: sotto, l'amministratore vede un avviso in fondo
   controllerName: "",   // titolare del trattamento (nome e cognome o associazione): da compilare prima del lancio
   controllerEmail: "",  // email a cui scrivere per esercitare i diritti privacy: da compilare
