@@ -35,7 +35,11 @@ Questa configurazione va fatta una sola volta dal proprietario del progetto.
 Nell'editor Apps Script apri Impostazioni progetto → Proprietà script e crea:
 
 - GOOGLE_CLIENT_ID: il Client ID OAuth appena creato.
-- ADMIN_EMAILS: email Gmail dell'amministratore, in minuscolo.
+- ADMIN_EMAILS: solo per la prima installazione: `setupPadelCommunity` ne copia gli indirizzi nella scheda **Admins** del foglio. Da lì in poi gli amministratori si gestiscono solo nella scheda **Admins** (colonna `email`; la colonna `community` resta `Telespadel`, o vuota). Finché la scheda non ha righe vale ancora ADMIN_EMAILS.
+- COMMUNITY_NAME (facoltativa): nome di questa community, di default `Telespadel`.
+
+### Inviti nella community (solo amministratori)
+Nella scheda Profilo, riquadro «Strumenti amministratore»: scrivi fino a 20 email (arriva il link d'invito, funziona con qualsiasi account Google) oppure crea un link da condividere via WhatsApp, copia o QR code. La scheda **Invites** del foglio tiene traccia di inviti e ingressi.
 - ALLOWED_EMAILS (opzionale ma consigliato per il pilota): elenco di email autorizzate separate da virgole. Se vuoto, qualsiasi account Google che raggiunge il deployment può registrarsi.
 - CALENDAR_ID (opzionale): ID del calendario condiviso sul quale creare gli eventi. Il proprietario dello script deve poter modificare quel calendario.
 

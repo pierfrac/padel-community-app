@@ -9,6 +9,8 @@ const HEADERS = {
   Registrations: ["registrationId","matchId","playerId","status","createdAt","partnerId"],
   Shares: ["shareId","matchId","token","label","createdBy","createdAt","openedAt","lastOpenAt","opens","devices","playerId","claimedAt","kind","responses"],
   Devices: ["deviceId","playerId","firstSeen","lastSeen"],
+  Admins: ["email","community","note"],
+  Invites: ["email","community","invitedBy","invitedAt","token","joinedAt","label","joins"],
   FeedbackPrivate: ["DO_NOT_USE"]
 };
 
@@ -17,11 +19,13 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.3";
+const BACKEND_VERSION = "2026-10-26.6";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
+/** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
+const DEFAULT_COMMUNITY = "Telespadel";
 const GENDERS = ["male","female","other"];
-const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
+const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","setLineup","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 var CURRENT_INVITE_TOKEN = "";
@@ -45,12 +49,17 @@ function setupPadelCommunity() {
   const sid = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
   const ss = sid ? SpreadsheetApp.openById(sid) : SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error("Apri Apps Script dal foglio Google oppure imposta SPREADSHEET_ID nelle Proprietà script.");
-  ["Players","Matches","Registrations","Shares","Devices"].forEach(function(name) {
+  ["Players","Matches","Registrations","Shares","Devices","Admins","Invites"].forEach(function(name) {
     let sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
     if (sh.getLastRow() === 0) {
       sh.getRange(1,1,1,HEADERS[name].length).setValues([HEADERS[name]]);
       sh.setFrozenRows(1);
+      if (name === "Admins") {
+        // First run: start from the old ADMIN_EMAILS property; from now on the sheet is the single list.
+        const old = (PropertiesService.getScriptProperties().getProperty("ADMIN_EMAILS")||"").split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
+        if (old.length) sh.getRange(2,1,old.length,3).setValues(old.map(function(em){ return [em,communityName_(),"da ADMIN_EMAILS"]; }));
+      }
     } else {
       // Width of the header row only: stray notes in far columns or lower rows must not break the check.
       const row1 = sh.getRange(1,1,1,sh.getMaxColumns()).getDisplayValues()[0].map(function(v){ return String(v).trim(); });
@@ -66,7 +75,96 @@ function setupPadelCommunity() {
       sh.setFrozenRows(1);
     }
   });
-  return "Struttura pronta. Ora configura GOOGLE_CLIENT_ID e ADMIN_EMAILS nelle Proprietà script.";
+  return "Struttura pronta. Ora configura GOOGLE_CLIENT_ID nelle Proprietà script. Gli amministratori si gestiscono nella scheda Admins.";
+}
+
+function communityName_() { return PropertiesService.getScriptProperties().getProperty("COMMUNITY_NAME") || DEFAULT_COMMUNITY; }
+/** Admins live in the "Admins" sheet (column email; column community empty or equal to this community). Until that sheet has rows, the old ADMIN_EMAILS property still works. */
+function isAdminEmail_(email) {
+  let rows = null;
+  try { rows = readRows_("Admins"); } catch(e) {}
+  if (rows && rows.length) {
+    const c = communityName_().toLowerCase();
+    return rows.some(function(r){ const rc = String(r.community||"").trim().toLowerCase(); return String(r.email||"").trim().toLowerCase() === email && (!rc || rc === c); });
+  }
+  return (PropertiesService.getScriptProperties().getProperty("ADMIN_EMAILS")||"").split(",").map(function(s){ return s.trim().toLowerCase(); }).filter(Boolean).indexOf(email) >= 0;
+}
+function readInvites_() { try { return readRows_("Invites"); } catch(e) { return []; } }
+function hasCommunityInvite_(email) {
+  const c = communityName_().toLowerCase();
+  return readInvites_().some(function(r){ return String(r.community||"").toLowerCase() === c && ((CURRENT_INVITE_TOKEN && String(r.token) === CURRENT_INVITE_TOKEN) || String(r.email||"").trim().toLowerCase() === email); });
+}
+function communityLink_(token) {
+  const base = PropertiesService.getScriptProperties().getProperty("APP_URL") || DEFAULT_APP_URL;
+  return base + "?community=" + encodeURIComponent(communityName_()) + "&t=" + encodeURIComponent(token);
+}
+function sendCommunityInvite_(email, token, inviterName) {
+  const c = communityName_(), link = communityLink_(token);
+  mail_(email, "🎾 " + inviterName + " ti invita nella community " + c,
+    "<p>Ciao,</p><p><b>" + esc_(inviterName) + "</b> ti invita a entrare nella community di padel <b>" + esc_(c) + "</b>: qui si organizzano le partite e si vede chi c'è.</p>" +
+    "<p><a href=\"" + esc_(link) + "\">Entra in " + esc_(c) + "</a>, <b>accedi con Google</b> e compila il tuo profilo (nome, livello, lato preferito). Va bene qualsiasi account Google, anche diverso da questo indirizzo (" + esc_(email) + "): il link riconosce il tuo invito.</p>" +
+    "<p style=\"color:#666;font-size:13px\">Non serve una Gmail: se non hai un account Google puoi crearne uno con un indirizzo email già tuo: <a href=\"https://accounts.google.com/signup\">accounts.google.com/signup</a>.</p>");
+}
+/** Admin only: invites people to the community without any match. */
+function inviteToCommunity(idToken,input) {
+  const user = verifyUser_(idToken); input = input || {};
+  if (!user.isAdmin) throw new Error("Solo un amministratore può invitare nella community.");
+  const raw = Array.isArray(input.emails) ? input.emails : String(input.emails||"").split(/[\s,;]+/);
+  const emails = []; const seen = {};
+  raw.forEach(function(x){ const e = String(x||"").trim().toLowerCase(); if (e && !seen[e]) { seen[e] = 1; emails.push(e); } });
+  if (!emails.length) throw new Error("Scrivi almeno un indirizzo email.");
+  if (emails.length > 20) throw new Error("Massimo 20 indirizzi per volta.");
+  const lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    const members = {}; readRows_("Players").forEach(function(r){ const e = String(r.email||"").trim().toLowerCase(); if (e) members[e] = 1; });
+    const invites = readInvites_(), c = communityName_(), sh = sheet_("Invites");
+    const me = readRows_("Players").find(function(r){ return String(r.playerId) === user.playerId; });
+    const inviter = me ? String(me.displayName||"") : "Un amministratore";
+    const out = {sent:[],resent:[],already:[],invalid:[],noQuota:[]};
+    emails.forEach(function(e) {
+      if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(e)) { out.invalid.push(e); return; }
+      if (members[e]) { out.already.push(e); return; }
+      let quota = 1; try { quota = MailApp.getRemainingDailyQuota(); } catch(err) {}
+      if (quota < 1) { out.noQuota.push(e); return; }
+      const old = invites.find(function(r){ return String(r.community||"").toLowerCase() === c.toLowerCase() && String(r.email||"").trim().toLowerCase() === e; });
+      if (old) { sendCommunityInvite_(e, String(old.token), inviter); out.resent.push(e); return; }
+      const token = Utilities.getUuid();
+      sh.appendRow([e, c, user.playerId, new Date(), token, "", "", 0]);
+      sendCommunityInvite_(e, token, inviter);
+      out.sent.push(e);
+    });
+    const parts = [];
+    if (out.sent.length) parts.push(out.sent.length + " inviti inviati");
+    if (out.resent.length) parts.push(out.resent.length + " inviti rimandati");
+    if (out.already.length) parts.push(out.already.length + " già nella community");
+    if (out.invalid.length) parts.push(out.invalid.length + " indirizzi non validi (" + out.invalid.join(", ") + ")");
+    if (out.noQuota.length) parts.push(out.noQuota.length + " non inviati: limite giornaliero di email raggiunto");
+    return {message: parts.join(", ") + ".", result: out};
+  } finally {
+    lock.releaseLock();
+  }
+}
+/** Admin only: a link for WhatsApp / QR / copy, usable by many people (no email needed). */
+function createCommunityLink(idToken,input) {
+  const user = verifyUser_(idToken); input = input || {};
+  if (!user.isAdmin) throw new Error("Solo un amministratore può creare un link di invito.");
+  const label = clean_(input.label,40) || "Link community";
+  const token = Utilities.getUuid();
+  sheet_("Invites").appendRow(["", communityName_(), user.playerId, new Date(), token, "", label, 0]);
+  return {token:token,label:label,url:communityLink_(token)};
+}
+/** Called when a profile is saved: single-address invites become "joined"; a shared link counts one more person (only for a brand new profile). */
+function markInviteJoined_(user,isNew) {
+  try {
+    const sh = sheet_("Invites");
+    readInvites_().forEach(function(r){
+      const byToken = !!CURRENT_INVITE_TOKEN && String(r.token) === CURRENT_INVITE_TOKEN, byEmail = !!String(r.email||"").trim() && String(r.email).trim().toLowerCase() === user.email;
+      if (!byToken && !byEmail) return;
+      approveEmail_(user.email);
+      if (String(r.email||"").trim()) { if (!String(r.joinedAt||"")) sh.getRange(r._row, 6).setValue(new Date()); }
+      else if (isNew) { sh.getRange(r._row, 8).setValue((Number(r.joins)||0)+1); if (!String(r.joinedAt||"")) sh.getRange(r._row, 6).setValue(new Date()); }
+    });
+  } catch(e) {}
 }
 
 function getPublicConfig() {
@@ -93,8 +191,9 @@ function getAppData(idToken) {
   matches.forEach(m => { m.shares=(sharesBy[m.matchId]||[]).filter(sh=>user.isAdmin||m.createdBy===user.playerId||sh.mine); m.registeredCount=counts[m.matchId]||0; m.seatsTaken=m.lineup?m.lineup.filter(x=>x.playerId||x.name).length:m.registeredCount; });
   const mine = players.find(p => p.playerId === user.playerId) || null;
   if (mine) { const row=readRows_("Players").find(r=>String(r.playerId)===user.playerId); mine.gender=row?String(row.gender||""):""; mine.consentAt=row&&row.consentAt?iso_(row.consentAt):""; mine.consentOk=!!row&&profileComplete_(row); mine.complete=mine.consentOk; }
-  const inviteStatus=!CURRENT_INVITE_TOKEN?"":(matches.some(m=>m.lineup&&m.lineup.some(x=>x.mine&&!x.playerId))?"ok":"used");
-  return {user:{email:user.email,playerId:user.playerId,isAdmin:user.isAdmin},me:mine,players:players,matches:matches,registrations:registrations,inviteStatus:inviteStatus};
+  const inviteStatus=!CURRENT_INVITE_TOKEN?"":(matches.some(m=>m.lineup&&m.lineup.some(x=>x.mine&&!x.playerId))?"ok":(readInvites_().some(r=>String(r.token)===CURRENT_INVITE_TOKEN)?"community":"used"));
+  const invites=user.isAdmin?readInvites_().map(r=>({email:String(r.email||""),invitedAt:iso_(r.invitedAt),joined:!!String(r.joinedAt||""),label:String(r.label||""),joins:Number(r.joins)||0,link:String(r.email||"").trim()?"":communityLink_(String(r.token))})):[];
+  return {user:{email:user.email,playerId:user.playerId,isAdmin:user.isAdmin},community:communityName_(),communityInvites:invites,me:mine,players:players,matches:matches,registrations:registrations,inviteStatus:inviteStatus};
 }
 
 function saveProfile(idToken, input) {
@@ -116,6 +215,7 @@ function saveProfile(idToken, input) {
   const consentAt=hasConsent?existing.consentAt:new Date();
   const values=[user.playerId,name,user.email,level,side,true,existing?existing.createdAt:new Date(),new Date(),photo,gender,consentAt,CONSENT_VERSION];
   if(existing) sh.getRange(existing._row,1,1,values.length).setValues([values]); else sh.appendRow(values);
+  markInviteJoined_(user,!existing);
   return {message:"Profilo salvato.",playerId:user.playerId};
 }
 
@@ -628,9 +728,8 @@ function verifyUser_(idToken) {
   const exp=Number(token.exp||0); if(exp*1000<Date.now()) throw new Error("Sessione Google scaduta. Accedi di nuovo.");
   const email=String(token.email).toLowerCase();
   const allowedEmails=(props.getProperty("ALLOWED_EMAILS")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
-  if(allowedEmails.length && allowedEmails.indexOf(email)<0 && !isApprovedEmail_(email) && !hasEmailInvite_(email) && !hasTokenInvite_()) throw new Error("Questo account non è ancora abilitato alla community. Chiedi a chi ti ha invitato o all'amministratore di aggiungere il tuo indirizzo.");
-  const adminEmails=(props.getProperty("ADMIN_EMAILS")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
-  return {email:email,playerId:"google:"+token.sub,isAdmin:adminEmails.indexOf(email)>=0,picture:String(token.picture||"")};
+  if(allowedEmails.length && allowedEmails.indexOf(email)<0 && !isApprovedEmail_(email) && !hasEmailInvite_(email) && !hasTokenInvite_() && !hasCommunityInvite_(email)) throw new Error("Questo account non è ancora abilitato alla community. Chiedi a chi ti ha invitato o all'amministratore di aggiungere il tuo indirizzo.");
+  return {email:email,playerId:"google:"+token.sub,isAdmin:isAdminEmail_(email),picture:String(token.picture||"")};
 }
 
 function safePhoto_(url) {

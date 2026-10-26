@@ -29,6 +29,9 @@ for (const required of [
   "function trackOpen(idToken,input)",
   "function respondToLink(idToken,input)",
   "function forgetDevice(idToken,input)",
+  "function inviteToCommunity(idToken,input)",
+  "function createCommunityLink(idToken,input)",
+  "function isAdminEmail_(email)",
   "function installTriggers()"
 ]) assert.ok(gs.includes(required), "Missing backend function: " + required);
 
