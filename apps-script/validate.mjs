@@ -23,6 +23,8 @@ for (const required of [
   "function setPartner(idToken,input)",
   "function setLineup(idToken,input)",
   "function setCourt(idToken,input)",
+  "function resendInvite(idToken,input)",
+  "function testMail()",
   "function startSession(idToken)",
   "function endSession(idToken)",
   "function processInvites()",

@@ -21,7 +21,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.10";
+const BACKEND_VERSION = "2026-10-26.11";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
@@ -30,7 +30,7 @@ const DEFAULT_COMMUNITY = "Telespadel";
 const SESSION_DAYS = 30;
 const SESSION_PREFIX = "s1.";
 const GENDERS = ["male","female","other"];
-const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","startSession","endSession","setLineup","setCourt","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
+const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","startSession","endSession","setLineup","resendInvite","setCourt","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 var CURRENT_INVITE_TOKEN = "";
@@ -265,7 +265,7 @@ function createMatch(idToken,input) {
   sendInvites_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},profile.displayName,lineup.newInvites);
   sendEmailInvites_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},profile.displayName,lineup.newEmailInvites);
   sendOrganizerSummary_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},user.email,profile.displayName,lineup);
-  return {matchId:id,message:calendarId?"Partita creata e aggiunta al calendario.":"Partita creata. Calendar non è ancora configurato."};
+  return {matchId:id,mailWarning:mailWarning_(),message:calendarId?"Partita creata e aggiunta al calendario.":"Partita creata. Calendar non è ancora configurato."};
 }
 
 function registerForMatch(idToken,input) {
@@ -341,6 +341,34 @@ function cancelRegistration(idToken,input) {
   return {message:"Iscrizione annullata."};
 }
 
+/** Organizer or admin sends the invitation email again for one seat (and restarts the 24-hour countdown). */
+function resendInvite(idToken,input) {
+  const user=verifyUser_(idToken); input=input||{};
+  const matchId=clean_(input.matchId,80), i=Number(input.index);
+  if(!(i>=0&&i<4)) throw new Error("Posto non valido.");
+  const lock=LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    const row=readRows_("Matches").find(r=>String(r.matchId)===matchId);
+    if(!row||String(row.status)==="cancelled"||String(row.status)==="completed") throw new Error("Partita non trovata.");
+    if(!user.isAdmin&&String(row.createdBy)!==user.playerId) throw new Error("Solo chi ha proposto la partita può rimandare un invito.");
+    const lineup=parseLineup_(row.lineup); if(!lineup) throw new Error("Questa partita non ha una formazione.");
+    const slot=lineup[i], ownerRow=readRows_("Players").find(r=>String(r.playerId)===String(row.createdBy)), who=ownerRow?String(ownerRow.displayName):"L'organizzatore";
+    const info={matchId:String(row.matchId),venue:venueLabel_(row),date:new Date(row.dateTime)};
+    MAIL_ERRORS=[];
+    if(slot.email) { slot.token=slot.token||Utilities.getUuid(); sendEmailInvites_(info,who,[{email:slot.email,token:slot.token}]); }
+    else if(slot.playerId&&slot.playerId!==String(row.createdBy)) {
+      if(readRows_("Registrations").some(r=>String(r.matchId)===matchId&&String(r.playerId)===slot.playerId&&String(r.status)==="joined")) throw new Error("Questa persona ha già accettato.");
+      sendInvites_(info,who,[slot.playerId]);
+    } else throw new Error("Questo posto non ha un invito da rimandare.");
+    const warn=mailWarning_(); if(warn) throw new Error(warn);
+    slot.invitedAt=new Date().toISOString(); slot.reminded=false;
+    sheet_("Matches").getRange(row._row,9).setValue(JSON.stringify(lineup));
+    return {message:"Invito rimandato."};
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /** Venue text for emails: adds the court number when known. */
 function venueLabel_(row) { const c=String(row.court||"").trim(); return String(row.venue)+(c?" · campo "+c:""); }
 
@@ -371,7 +399,7 @@ function setLineup(idToken,input) {
     const ownerRow=readRows_("Players").find(r=>String(r.playerId)===String(row.createdBy));
     sendInvites_({matchId:String(row.matchId),venue:venueLabel_(row),date:new Date(row.dateTime)},ownerRow?String(ownerRow.displayName):"L'organizzatore",lineup.newInvites.filter(id=>joined.indexOf(id)<0));
     sendEmailInvites_({matchId:String(row.matchId),venue:venueLabel_(row),date:new Date(row.dateTime)},ownerRow?String(ownerRow.displayName):"L'organizzatore",lineup.newEmailInvites);
-    return {message:"Formazione aggiornata."};
+    const warn=mailWarning_(); return {message:"Formazione aggiornata."+(warn?" "+warn:""),mailWarning:warn};
   } finally {
     lock.releaseLock();
   }
@@ -387,9 +415,23 @@ function appLink_(m,token) {
   return base+"?match="+encodeURIComponent(m.matchId)+"&v="+encodeURIComponent(m.venue)+"&d="+encodeURIComponent(new Date(m.date).toISOString())+(token?"&t="+encodeURIComponent(token):"");
 }
 function whenText_(d) { return Utilities.formatDate(new Date(d),Session.getScriptTimeZone(),"dd/MM/yyyy 'alle' HH:mm"); }
+/** Problems met while sending during the current request: the caller can tell the organizer instead of failing silently. */
+var MAIL_ERRORS = [];
 function mail_(to,subject,html) {
-  try { if(!to) return; MailApp.sendEmail({to:String(to),subject:subject,htmlBody:html,name:"Padel Community"}); }
-  catch(err) { console.log("Email non inviata a "+to+": "+err); }
+  if(!to) { MAIL_ERRORS.push("indirizzo email mancante"); return false; }
+  try { MailApp.sendEmail({to:String(to),subject:subject,htmlBody:html,name:"Padel Community"}); return true; }
+  catch(err) { console.log("Email non inviata a "+to+": "+err); MAIL_ERRORS.push(String(to)+" ("+String(err&&err.message||err).slice(0,120)+")"); return false; }
+}
+function mailWarning_() {
+  if(!MAIL_ERRORS.length) return "";
+  const w="Attenzione: non sono riuscito a mandare l'email a "+MAIL_ERRORS.join("; ")+". Controlla che l'amministratore abbia eseguito testMail e autorizzato l'invio, oppure usa «Reinvia email».";
+  MAIL_ERRORS=[]; return w;
+}
+/** Run from the editor: asks for the e-mail permission and sends a test message to the owner, so any problem shows up here. */
+function testMail() {
+  const to=Session.getEffectiveUser().getEmail();
+  MailApp.sendEmail({to:to,subject:"Prova Padel Community",htmlBody:"<p>Se leggi questa email, l'invio dal backend funziona.</p>",name:"Padel Community"});
+  return "Email di prova inviata a "+to+". Invii ancora disponibili oggi: "+MailApp.getRemainingDailyQuota()+".";
 }
 function playerMap_() {
   const map={}; readRows_("Players").forEach(r=>{ map[String(r.playerId)]={name:String(r.displayName||""),email:String(r.email||"")}; }); return map;
@@ -415,7 +457,7 @@ function sendInvites_(match,organizerName,playerIds) {
 function sendInvitesUnsafe_(match,organizerName,playerIds) {
   const pm=playerMap_();
   playerIds.forEach(function(id){
-    const p=pm[id]; if(!p||!p.email) return;
+    const p=pm[id]; if(!p||!p.email) { MAIL_ERRORS.push("un giocatore senza indirizzo email nel profilo"); return; }
     mail_(p.email,"🎾 "+organizerName+" ti ha invitato a una partita di padel",
       "<p>Ciao "+esc_(p.name)+",</p><p><b>"+esc_(organizerName)+"</b> ti ha invitato a una partita di padel:</p>"+
       "<p><b>"+esc_(match.venue)+"</b><br>"+esc_(whenText_(match.date))+"</p>"+
@@ -495,7 +537,7 @@ function pickSlot_(lineup,side) {
 function publicLineup_(lu,user,createdBy) {
   if(!lu) return null;
   const owner=user.isAdmin||String(createdBy)===user.playerId;
-  return lu.map(x=>({playerId:x.playerId,name:x.name,emailInvite:!!x.email,mine:!!(x.email&&(x.email===user.email||(CURRENT_INVITE_TOKEN&&x.token===CURRENT_INVITE_TOKEN))),email:owner?x.email:"",openedAt:owner?x.openedAt:"",opens:owner?x.opens:0}));
+  return lu.map(x=>({playerId:x.playerId,name:x.name,emailInvite:!!x.email,mine:!!(x.email&&(x.email===user.email||(CURRENT_INVITE_TOKEN&&x.token===CURRENT_INVITE_TOKEN))),email:owner?x.email:"",token:owner?x.token:"",openedAt:owner?x.openedAt:"",opens:owner?x.opens:0}));
 }
 /** Personal share link: lets the sharer see who opens it. Members only. */
 function createShareLink(idToken,input) {
