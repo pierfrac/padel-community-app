@@ -36,6 +36,8 @@ for (const required of [
   "function forgetDevice(idToken,input)",
   "function inviteToCommunity(idToken,input)",
   "function createCommunityLink(idToken,input)",
+  "function getSettings()",
+  "function disclaimer_()",
   "function isAdminEmail_(email)",
   "function installTriggers()"
 ]) assert.ok(gs.includes(required), "Missing backend function: " + required);

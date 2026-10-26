@@ -85,3 +85,6 @@ Limiti e condizioni:
 - Il controllo gira ogni ora con un trigger. Va attivato una volta: nell'editor esegui `installTriggers` e accetta i nuovi permessi (invio email e trigger), poi ripubblica con "Nuova versione".
 - Proprietà script opzionale `APP_URL`: indirizzo del sito usato nei link delle email (di default quello su GitHub Pages).
 - Limite: un account Gmail personale può inviare circa 100 email al giorno con Apps Script.
+
+### Avviso (disclaimer)
+Il testo mostrato in fondo all'app e nelle email d'invito sta nella scheda **Settings** del foglio, riga `disclaimer`, colonna `value`. `setupPadelCommunity` lo crea con il testo predefinito; modificalo lì. Cella vuota = testo predefinito.

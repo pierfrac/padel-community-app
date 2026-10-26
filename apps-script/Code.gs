@@ -11,6 +11,7 @@ const HEADERS = {
   Devices: ["deviceId","playerId","firstSeen","lastSeen"],
   Communities: ["name","note"],
   Admins: ["email","community","note"],
+  Settings: ["key","value","note"],
   Sessions: ["tokenHash","email","sub","picture","createdAt","expiresAt"],
   Invites: ["email","community","invitedBy","invitedAt","token","joinedAt","label","joins"],
   FeedbackPrivate: ["DO_NOT_USE"]
@@ -21,7 +22,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.14";
+const BACKEND_VERSION = "2026-10-26.15";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
@@ -29,8 +30,10 @@ const DEFAULT_COMMUNITY = "Telespadel";
 /** After one Google login the app gets its own session code, valid this many days, so people sign in about once a month. */
 const SESSION_DAYS = 30;
 const SESSION_PREFIX = "s1.";
+/** Default notice, written to the Settings sheet (row "disclaimer") by setupPadelCommunity. The admin edits the text there; the app and the invitations show whatever is in the sheet. */
+const DEFAULT_DISCLAIMER = "Questa app non usa in alcun modo strumenti aziendali e non è collegata con Telespazio.\nCertamente vi chiediamo di mantenere la community limitata a noi e ad eventuali amici e colleghi che volete coinvolgere per riempire i campi. Noi non saremo responsabili né dell'organizzazione né di eventuali disguidi verso i circoli o tra colleghi.";
 const GENDERS = ["male","female","other"];
-const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","startSession","endSession","setLineup","resendInvite","setCourt","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
+const API_METHODS = ["getSettings","getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","startSession","endSession","setLineup","resendInvite","setCourt","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 var CURRENT_INVITE_TOKEN = "";
@@ -54,13 +57,14 @@ function setupPadelCommunity() {
   const sid = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
   const ss = sid ? SpreadsheetApp.openById(sid) : SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error("Apri Apps Script dal foglio Google oppure imposta SPREADSHEET_ID nelle Proprietà script.");
-  ["Players","Matches","Registrations","Shares","Devices","Communities","Admins","Invites","Sessions"].forEach(function(name) {
+  ["Players","Matches","Registrations","Shares","Devices","Communities","Admins","Invites","Sessions","Settings"].forEach(function(name) {
     let sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
     if (sh.getLastRow() === 0) {
       sh.getRange(1,1,1,HEADERS[name].length).setValues([HEADERS[name]]);
       sh.setFrozenRows(1);
       if (name === "Communities") sh.getRange(2,1,1,2).setValues([[communityName_(),"community attuale"]]);
+      if (name === "Settings") sh.getRange(2,1,1,3).setValues([["disclaimer",DEFAULT_DISCLAIMER,"Testo mostrato in fondo all'app e nelle email d'invito. Modificalo qui."]]);
       if (name === "Admins") {
         // First run: start from the old ADMIN_EMAILS property; from now on the sheet is the single list.
         const old = (PropertiesService.getScriptProperties().getProperty("ADMIN_EMAILS")||"").split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
@@ -81,6 +85,10 @@ function setupPadelCommunity() {
       sh.setFrozenRows(1);
     }
   });
+  try {
+    const st = ss.getSheetByName("Settings");
+    if (st && !readRowsFresh_("Settings").some(function(r){ return String(r.key) === "disclaimer"; })) st.appendRow(["disclaimer",DEFAULT_DISCLAIMER,"Testo mostrato in fondo all'app e nelle email d'invito. Modificalo qui."]);
+  } catch(e) {}
   applyLookups_(ss);
   return "Struttura pronta. Ora configura GOOGLE_CLIENT_ID nelle Proprietà script. Gli amministratori si gestiscono nella scheda Admins.";
 }
@@ -95,6 +103,15 @@ function applyLookups_(ss) {
     if (invites && comms) invites.getRange("B2:B1000").setDataValidation(rule(comms.getRange("A2:A100"), "Scegli una community dalla scheda Communities."));
   } catch(err) { console.log("Elenchi a tendina non applicati: " + err); }
 }
+/** Notice shown in the app and in the invitations: the text in the Settings sheet, or the default if the row is missing or empty. */
+function disclaimer_() {
+  try { const r=readRows_("Settings").find(function(x){ return String(x.key)==="disclaimer"; }); const t=r?String(r.value||"").trim():""; if(t) return t.slice(0,1500); } catch(e) {}
+  return DEFAULT_DISCLAIMER;
+}
+/** Public (no login): the texts the page shows before anyone signs in. */
+function disclaimerHtml_() { return "<hr><p style=\"color:#666;font-size:12px\">"+esc_(disclaimer_()).replace(/\n/g,"<br>")+"</p>"; }
+function disclaimerText_() { return "\n--\n"+disclaimer_()+"\n"; }
+function getSettings() { return {community:communityName_(),disclaimer:disclaimer_()}; }
 function communityName_() { return PropertiesService.getScriptProperties().getProperty("COMMUNITY_NAME") || DEFAULT_COMMUNITY; }
 /** Admins live in the "Admins" sheet (column email; column community empty or equal to this community). Until that sheet has rows, the old ADMIN_EMAILS property still works. */
 function isAdminEmail_(email) {
@@ -120,8 +137,8 @@ function sendCommunityInvite_(email, token, inviterName) {
   invite_(email, email, "🎾 " + inviterName + " ti invita nella community " + c,
     "<p>Ciao,</p><p><b>" + esc_(inviterName) + "</b> ti invita a entrare nella community di padel <b>" + esc_(c) + "</b>: qui si organizzano le partite e si vede chi c'è.</p>" +
     "<p><a href=\"" + esc_(link) + "\">Entra in " + esc_(c) + "</a>, <b>accedi con Google</b> e compila il tuo profilo (nome, livello, lato preferito). Va bene qualsiasi account Google, anche diverso da questo indirizzo (" + esc_(email) + "): il link riconosce il tuo invito.</p>" +
-    "<p style=\"color:#666;font-size:13px\">Non serve una Gmail: se non hai un account Google puoi crearne uno con un indirizzo email già tuo: <a href=\"https://accounts.google.com/signup\">accounts.google.com/signup</a>.</p>",
-    "Ciao,\n" + inviterName + " ti invita a entrare nella community di padel " + c + ": qui si organizzano le partite e si vede chi c'è.\n\nEntra qui, accedi con Google (va bene qualsiasi account, anche diverso da questo indirizzo) e compila il tuo profilo:\n" + link + "\n");
+    "<p style=\"color:#666;font-size:13px\">Non serve una Gmail: se non hai un account Google puoi crearne uno con un indirizzo email già tuo: <a href=\"https://accounts.google.com/signup\">accounts.google.com/signup</a>.</p>" + disclaimerHtml_(),
+    "Ciao,\n" + inviterName + " ti invita a entrare nella community di padel " + c + ": qui si organizzano le partite e si vede chi c'è.\n\nEntra qui, accedi con Google (va bene qualsiasi account, anche diverso da questo indirizzo) e compila il tuo profilo:\n" + link + "\n" + disclaimerText_());
 }
 /** Admin only: invites people to the community without any match. */
 function inviteToCommunity(idToken,input) {
@@ -217,7 +234,7 @@ function appData_(user) {
   if (mine) { const row=readRows_("Players").find(r=>String(r.playerId)===user.playerId); mine.gender=row?String(row.gender||""):""; mine.consentAt=row&&row.consentAt?iso_(row.consentAt):""; mine.consentOk=!!row&&profileComplete_(row); mine.complete=mine.consentOk; }
   const inviteStatus=!CURRENT_INVITE_TOKEN?"":(matches.some(m=>m.lineup&&m.lineup.some(x=>x.mine&&!x.playerId))?"ok":(readInvites_().some(r=>String(r.token)===CURRENT_INVITE_TOKEN)?"community":"used"));
   const invites=user.isAdmin?readInvites_().map(r=>({email:String(r.email||""),invitedAt:iso_(r.invitedAt),joined:!!String(r.joinedAt||""),label:String(r.label||""),joins:Number(r.joins)||0,link:String(r.email||"").trim()?"":communityLink_(String(r.token))})):[];
-  return {user:{email:user.email,playerId:user.playerId,isAdmin:user.isAdmin},community:communityName_(),communityInvites:invites,me:mine,players:players,matches:matches,registrations:registrations,inviteStatus:inviteStatus};
+  return {user:{email:user.email,playerId:user.playerId,isAdmin:user.isAdmin},community:communityName_(),disclaimer:disclaimer_(),communityInvites:invites,me:mine,players:players,matches:matches,registrations:registrations,inviteStatus:inviteStatus};
 }
 
 function saveProfile(idToken, input) {
@@ -449,8 +466,8 @@ function sendEmailInvites_(match,organizerName,invites) {
         "<p>📅 <a href=\""+esc_(calUrl_(match))+"\">Aggiungi al calendario</a></p>"+
         "<p>Ti abbiamo riservato un posto. Per prenderlo: <a href=\""+esc_(link)+"\">apri la partita</a>, <b>accedi con Google</b>, salva il tuo profilo (nome, livello e lato preferito) e premi “Accetta invito”. Puoi usare qualsiasi account Google, anche diverso da questo indirizzo ("+esc_(email)+"): il link riconosce il tuo invito.</p>"+
         "<p style=\"color:#666;font-size:13px\">Non serve una Gmail: va bene qualsiasi account Google (anche di lavoro o scuola). Se non ne hai uno, puoi crearne uno con questo stesso indirizzo email o con un altro: <a href=\"https://accounts.google.com/signup\">accounts.google.com/signup</a> (scegli «Usa il mio indirizzo email attuale»).</p>"+
-        "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore e la partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto torna libero.</p>",
-        "Ciao,\n"+organizerName+" ti ha invitato a una partita di padel:\n"+match.venue+"\n"+whenText_(match.date)+"\n\n📅 Aggiungi al calendario:\n"+calUrl_(match)+"\n\nTi abbiamo riservato un posto. Per prenderlo apri la partita, accedi con Google (va bene qualsiasi account, anche diverso da questo indirizzo), salva il tuo profilo e premi “Accetta invito”:\n"+link+"\n\nSe non rispondi entro 24 ore e la partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto torna libero.\n");
+        "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore e la partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto torna libero.</p>"+disclaimerHtml_(),
+        "Ciao,\n"+organizerName+" ti ha invitato a una partita di padel:\n"+match.venue+"\n"+whenText_(match.date)+"\n\n📅 Aggiungi al calendario:\n"+calUrl_(match)+"\n\nTi abbiamo riservato un posto. Per prenderlo apri la partita, accedi con Google (va bene qualsiasi account, anche diverso da questo indirizzo), salva il tuo profilo e premi “Accetta invito”:\n"+link+"\n\nSe non rispondi entro 24 ore e la partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto torna libero.\n"+disclaimerText_());
     });
   } catch(err) { console.log("Inviti email non inviati: "+err); }
 }
@@ -468,8 +485,8 @@ function sendInvitesUnsafe_(match,organizerName,playerIds) {
       "<p><b>"+esc_(match.venue)+"</b><br>"+esc_(whenText_(match.date))+"</p>"+
       "<p>📅 <a href=\""+esc_(calUrl_(match))+"\">Aggiungi al calendario</a></p>"+
       "<p>Ti abbiamo riservato un posto. <a href=\""+esc_(appLink_(match))+"\">Apri la partita e premi “Accetta invito”</a>.</p>"+
-      "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore e la partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto torna libero.</p>",
-      "Ciao "+p.name+",\n"+organizerName+" ti ha invitato a una partita di padel:\n"+match.venue+"\n"+whenText_(match.date)+"\n\n📅 Aggiungi al calendario:\n"+calUrl_(match)+"\n\nTi abbiamo riservato un posto. Apri la partita e premi “Accetta invito”:\n"+appLink_(match)+"\n");
+      "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore e la partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto torna libero.</p>"+disclaimerHtml_(),
+      "Ciao "+p.name+",\n"+organizerName+" ti ha invitato a una partita di padel:\n"+match.venue+"\n"+whenText_(match.date)+"\n\n📅 Aggiungi al calendario:\n"+calUrl_(match)+"\n\nTi abbiamo riservato un posto. Apri la partita e premi “Accetta invito”:\n"+appLink_(match)+"\n"+disclaimerText_());
   });
 }
 
