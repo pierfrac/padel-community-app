@@ -21,7 +21,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.13";
+const BACKEND_VERSION = "2026-10-26.14";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
@@ -403,6 +403,12 @@ function appLink_(m,token) {
   const base=PropertiesService.getScriptProperties().getProperty("APP_URL")||DEFAULT_APP_URL;
   return base+"?match="+encodeURIComponent(m.matchId)+"&v="+encodeURIComponent(m.venue)+"&d="+encodeURIComponent(new Date(m.date).toISOString())+(token?"&t="+encodeURIComponent(token):"");
 }
+/** "Add to Google Calendar" link for an invitation: the match as a 90-minute event. Works from any mail app (a plain link, no attachment needed). */
+function calUrl_(m) {
+  const st=new Date(m.date); if(isNaN(st.getTime())) return "";
+  const f=d=>Utilities.formatDate(d,"UTC","yyyyMMdd'T'HHmmss'Z'"), en=new Date(st.getTime()+90*60000);
+  return "https://calendar.google.com/calendar/render?action=TEMPLATE&text="+encodeURIComponent("Padel · "+m.venue)+"&dates="+f(st)+"/"+f(en)+"&location="+encodeURIComponent(m.venue)+"&details="+encodeURIComponent("Partita organizzata con Padel Community.\n"+appLink_(m));
+}
 function whenText_(d) { return Utilities.formatDate(new Date(d),Session.getScriptTimeZone(),"dd/MM/yyyy 'alle' HH:mm"); }
 /** Problems met while sending during the current request: the caller can tell the organizer instead of failing silently. */
 var MAIL_ERRORS = [];
@@ -440,10 +446,11 @@ function sendEmailInvites_(match,organizerName,invites) {
       invite_(email,email,subject,
         "<p>Ciao,</p><p><b>"+esc_(organizerName)+"</b> ti ha invitato a una partita di padel:</p>"+
         "<p><b>"+esc_(match.venue)+"</b><br>"+esc_(whenText_(match.date))+"</p>"+
+        "<p>📅 <a href=\""+esc_(calUrl_(match))+"\">Aggiungi al calendario</a></p>"+
         "<p>Ti abbiamo riservato un posto. Per prenderlo: <a href=\""+esc_(link)+"\">apri la partita</a>, <b>accedi con Google</b>, salva il tuo profilo (nome, livello e lato preferito) e premi “Accetta invito”. Puoi usare qualsiasi account Google, anche diverso da questo indirizzo ("+esc_(email)+"): il link riconosce il tuo invito.</p>"+
         "<p style=\"color:#666;font-size:13px\">Non serve una Gmail: va bene qualsiasi account Google (anche di lavoro o scuola). Se non ne hai uno, puoi crearne uno con questo stesso indirizzo email o con un altro: <a href=\"https://accounts.google.com/signup\">accounts.google.com/signup</a> (scegli «Usa il mio indirizzo email attuale»).</p>"+
         "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore e la partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto torna libero.</p>",
-        "Ciao,\n"+organizerName+" ti ha invitato a una partita di padel:\n"+match.venue+"\n"+whenText_(match.date)+"\n\nTi abbiamo riservato un posto. Per prenderlo apri la partita, accedi con Google (va bene qualsiasi account, anche diverso da questo indirizzo), salva il tuo profilo e premi “Accetta invito”:\n"+link+"\n\nSe non rispondi entro 24 ore e la partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto torna libero.\n");
+        "Ciao,\n"+organizerName+" ti ha invitato a una partita di padel:\n"+match.venue+"\n"+whenText_(match.date)+"\n\n📅 Aggiungi al calendario:\n"+calUrl_(match)+"\n\nTi abbiamo riservato un posto. Per prenderlo apri la partita, accedi con Google (va bene qualsiasi account, anche diverso da questo indirizzo), salva il tuo profilo e premi “Accetta invito”:\n"+link+"\n\nSe non rispondi entro 24 ore e la partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto torna libero.\n");
     });
   } catch(err) { console.log("Inviti email non inviati: "+err); }
 }
@@ -459,9 +466,10 @@ function sendInvitesUnsafe_(match,organizerName,playerIds) {
     invite_(p.email,p.name,"🎾 "+organizerName+" ti ha invitato a una partita di padel",
       "<p>Ciao "+esc_(p.name)+",</p><p><b>"+esc_(organizerName)+"</b> ti ha invitato a una partita di padel:</p>"+
       "<p><b>"+esc_(match.venue)+"</b><br>"+esc_(whenText_(match.date))+"</p>"+
+      "<p>📅 <a href=\""+esc_(calUrl_(match))+"\">Aggiungi al calendario</a></p>"+
       "<p>Ti abbiamo riservato un posto. <a href=\""+esc_(appLink_(match))+"\">Apri la partita e premi “Accetta invito”</a>.</p>"+
       "<p style=\"color:#666;font-size:13px\">Se non rispondi entro 24 ore e la partita è tra meno di "+REMINDER_MIN_DAYS_LEFT+" giorni, il posto torna libero.</p>",
-      "Ciao "+p.name+",\n"+organizerName+" ti ha invitato a una partita di padel:\n"+match.venue+"\n"+whenText_(match.date)+"\n\nTi abbiamo riservato un posto. Apri la partita e premi “Accetta invito”:\n"+appLink_(match)+"\n");
+      "Ciao "+p.name+",\n"+organizerName+" ti ha invitato a una partita di padel:\n"+match.venue+"\n"+whenText_(match.date)+"\n\n📅 Aggiungi al calendario:\n"+calUrl_(match)+"\n\nTi abbiamo riservato un posto. Apri la partita e premi “Accetta invito”:\n"+appLink_(match)+"\n");
   });
 }
 
