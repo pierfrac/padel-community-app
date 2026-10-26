@@ -1,14 +1,28 @@
 /**
  * Padel Community web app backend.
- * Configure Script Properties: GOOGLE_CLIENT_ID, ADMIN_EMAILS, CALENDAR_ID (optional).
+ * Configure Script Properties: GOOGLE_CLIENT_ID, ADMIN_EMAILS, CALENDAR_ID (optional),
+ * APP_URL (optional, public address of the web front end, used in organizer emails),
+ * SUPPORT_EMAIL (optional, defaults to SUPPORT_EMAIL_DEFAULT).
  * This script is bound to the community spreadsheet.
  */
 const HEADERS = {
-  Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt"],
+  Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt","gender","emailOptOut"],
   Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId"],
   Registrations: ["registrationId","matchId","playerId","status","createdAt"],
+  MailList: ["email","addedBy","createdAt"],
   FeedbackPrivate: ["DO_NOT_USE"]
 };
+
+/** preferredSide: left = Sinistro (plays left), right = Destro (plays right), lefty = Mancino (left-handed, always plays right). Older rows may hold "indifferent" or be empty: those profiles count as incomplete. */
+const POSITIONS = ["left","right","lefty"];
+/** gender: M = Uomo, F = Donna. Visible only to the player and to administrators. */
+const GENDERS = ["M","F"];
+/** Compatibility between two partners, added to the base score. Keys are the two positions sorted alphabetically and joined by "|". */
+const PAIR_MODIFIERS = {"left|lefty":10,"left|right":10,"lefty|right":-10,"left|left":-25,"right|right":-25,"lefty|lefty":-25};
+const SUPPORT_EMAIL_DEFAULT = "pfcardillo-debutelespadel@gmail.com";
+/** Apps Script allows at most 50 recipients per message; one slot is taken by the "to" address (the sending account), the rest is Bcc. */
+const MAIL_BATCH = 49;
+const MAIL_MATCH_LIMIT = 15;
 
 function doGet() {
   const t = HtmlService.createTemplateFromFile("Index");
@@ -16,8 +30,8 @@ function doGet() {
   return t.evaluate().setTitle("Padel Community").addMetaTag("viewport","width=device-width, initial-scale=1");
 }
 
-const BACKEND_VERSION = "2026-10-23.2";
-const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch"];
+const BACKEND_VERSION = "2026-10-26.1";
+const API_METHODS = ["getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","getIncompleteProfiles","getMailList","saveMailList","previewEmail","sendEmail"];
 
 /** JSON API for the static front end (web/). Body is text/plain JSON to avoid a CORS preflight. */
 function doPost(e) {
@@ -37,7 +51,7 @@ function setupPadelCommunity() {
   const sid = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
   const ss = sid ? SpreadsheetApp.openById(sid) : SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error("Apri Apps Script dal foglio Google oppure imposta SPREADSHEET_ID nelle Proprietà script.");
-  ["Players","Matches","Registrations"].forEach(function(name) {
+  ["Players","Matches","Registrations","MailList"].forEach(function(name) {
     let sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
     if (sh.getLastRow() === 0) {
@@ -66,7 +80,11 @@ function getPublicConfig() {
 function getAppData(idToken) {
   const user = verifyUser_(idToken);
   const players = readRows_("Players").filter(r => r.playerId && truthy_(r.active)).map(function(r) {
-    return {playerId:String(r.playerId),displayName:String(r.displayName || "Giocatore"),skillLevel:String(r.skillLevel || "Da definire"),preferredSide:String(r.preferredSide || "indifferent"),active:true};
+    const own = String(r.playerId) === user.playerId;
+    const p = {playerId:String(r.playerId),displayName:String(r.displayName || "Giocatore"),skillLevel:String(r.skillLevel || "Da definire"),preferredSide:String(r.preferredSide || ""),active:true};
+    if (own || user.isAdmin) p.gender = String(r.gender || "");
+    if (own) p.emailOptOut = truthy_(r.emailOptOut);
+    return p;
   });
   const registrations = readRows_("Registrations").filter(r => r.registrationId && String(r.status) === "joined").map(function(r) {
     return {registrationId:String(r.registrationId),matchId:String(r.matchId),playerId:String(r.playerId),status:String(r.status)};
@@ -87,12 +105,15 @@ function saveProfile(idToken, input) {
   const name = clean_(input.displayName,80);
   const level = clean_(input.skillLevel,30);
   const side = clean_(input.preferredSide,20);
+  const gender = clean_(input.gender,2).toUpperCase();
+  const emailOptOut = input.emailOptOut===true || input.emailOptOut==="true";
   const allowedLevels = ["Bronze","Silver","Silver-Gold","Gold","Gold+"];
-  if (!name || allowedLevels.indexOf(level)<0 || ["right","left","indifferent"].indexOf(side)<0)
-    throw new Error("Inserisci nome, livello e lato preferito.");
-  const sh=sheet_("Players"), rows=readRows_("Players");
+  if (!name || allowedLevels.indexOf(level)<0 || POSITIONS.indexOf(side)<0 || GENDERS.indexOf(gender)<0)
+    throw new Error("Inserisci nome, livello, sesso e posizione.");
+  const sh=sheet_("Players"); ensureHeaders_(sh,"Players");
+  const rows=readRows_("Players");
   const existing=rows.find(r=>String(r.playerId)===user.playerId);
-  const values=[user.playerId,name,user.email,level,side,true,existing?existing.createdAt:new Date(),new Date()];
+  const values=[user.playerId,name,user.email,level,side,true,existing?existing.createdAt:new Date(),new Date(),gender,emailOptOut];
   if(existing) sh.getRange(existing._row,1,1,values.length).setValues([values]); else sh.appendRow(values);
   return {message:"Profilo salvato.",playerId:user.playerId};
 }
@@ -174,6 +195,213 @@ function cancelMatch(idToken,input) {
     if(calId) { try { const cal=CalendarApp.getCalendarById(calId); const ev=cal&&cal.getEventById(eventId); if(ev) ev.deleteEvent(); } catch(e) {} }
   }
   return {message:"Partita annullata."};
+}
+
+/* ---------- Funzioni riservate agli organizzatori (ADMIN_EMAILS) ---------- */
+
+/** Active players without gender or position, with the names of the missing fields. */
+function getIncompleteProfiles(idToken) {
+  const user=verifyUser_(idToken); requireAdmin_(user);
+  const incomplete=readRows_("Players").filter(r=>r.playerId&&truthy_(r.active)&&!isComplete_(r)).map(function(r) {
+    const missing=[];
+    if(GENDERS.indexOf(String(r.gender||""))<0) missing.push("sesso");
+    if(POSITIONS.indexOf(String(r.preferredSide||""))<0) missing.push("posizione");
+    return {displayName:String(r.displayName||"Giocatore"),missing:missing};
+  }).sort((a,b)=>a.displayName.localeCompare(b.displayName));
+  return {incomplete:incomplete};
+}
+
+function getMailList(idToken) {
+  const user=verifyUser_(idToken); requireAdmin_(user);
+  return {emails:readRows_("MailList").map(r=>String(r.email||"")).filter(Boolean)};
+}
+
+/** Replaces the manual mail list (people not yet in the app). Addresses removed from the text are deleted. */
+function saveMailList(idToken,input) {
+  const user=verifyUser_(idToken); requireAdmin_(user);
+  const parsed=parseEmails_(input&&input.emails);
+  if(parsed.valid.length>500) throw new Error("La lista può contenere al massimo 500 indirizzi.");
+  const lock=LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh=sheet_("MailList"), cols=HEADERS.MailList.length, old={};
+    readRows_("MailList").forEach(r=>{old[String(r.email).toLowerCase()]=r;});
+    const now=new Date();
+    const rows=parsed.valid.map(e=>[e,old[e]?old[e].addedBy:user.email,old[e]?old[e].createdAt:now]);
+    if(sh.getLastRow()>1) sh.getRange(2,1,sh.getLastRow()-1,cols).clearContent();
+    if(rows.length) sh.getRange(2,1,rows.length,cols).setValues(rows);
+  } finally {
+    lock.releaseLock();
+  }
+  const skipped=parsed.invalid.length?" Ignorati perché non validi: "+parsed.invalid.slice(0,5).join(", ")+(parsed.invalid.length>5?"…":"")+".":"";
+  return {emails:parsed.valid,message:"Lista salvata: "+parsed.valid.length+" indirizzi."+skipped};
+}
+
+/** Dry run: who would receive the email, how many sends, how much daily quota is left, and the exact text. */
+function previewEmail(idToken,input) {
+  const user=verifyUser_(idToken); requireAdmin_(user);
+  const p=planEmail_(input);
+  return {recipientCount:p.emails.length,batches:p.chunks.length,quotaRemaining:p.quota,quotaNeeded:p.needed,subject:p.subject,body:p.body,notes:p.notes};
+}
+
+/** Sends the organizer email. Recipients are always in Bcc; the audience is recomputed here and never taken from the browser. */
+function sendEmail(idToken,input) {
+  const user=verifyUser_(idToken); requireAdmin_(user);
+  const lock=LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const p=planEmail_(input);
+    if(!p.emails.length) throw new Error("Nessun destinatario con queste scelte.");
+    if(p.needed>p.quota) throw new Error("Quota giornaliera di invio insufficiente: servono "+p.needed+" destinatari (compreso l'indirizzo che invia), ne restano "+p.quota+". Riduci i destinatari o riprova domani.");
+    const to=Session.getEffectiveUser().getEmail();
+    let sent=0;
+    p.chunks.forEach(function(chunk) {
+      try {
+        MailApp.sendEmail({to:to,bcc:chunk.join(","),subject:p.subject,body:p.body,replyTo:p.support,name:"Telespadel"});
+        sent+=chunk.length;
+      } catch(err) {
+        throw new Error("Inviate "+sent+" email su "+p.emails.length+" prima dell'errore: "+err.message+". Non rinviare a chi l'ha già ricevuta.");
+      }
+    });
+    return {sent:sent,message:"Email inviata a "+sent+" destinatari in "+p.chunks.length+(p.chunks.length===1?" invio":" invii")+"."};
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function planEmail_(input) {
+  input=input||{};
+  const src=input.sources||{}, f=input.filter||{};
+  const sources={registered:src.registered===true,manual:src.manual===true};
+  if(!sources.registered&&!sources.manual) throw new Error("Scegli almeno una fonte di indirizzi.");
+  const mode=["all","incomplete","match"].indexOf(f.mode)>=0?f.mode:"all";
+  const players=readRows_("Players").filter(r=>r.playerId).map(function(r) {
+    return {playerId:String(r.playerId),displayName:String(r.displayName||""),email:String(r.email||""),skillLevel:String(r.skillLevel||""),preferredSide:String(r.preferredSide||""),gender:String(r.gender||""),emailOptOut:truthy_(r.emailOptOut),active:truthy_(r.active)};
+  });
+  const props=PropertiesService.getScriptProperties();
+  const appUrl=String(props.getProperty("APP_URL")||"").trim().replace(/#.*$/,"");
+  const support=String(props.getProperty("SUPPORT_EMAIL")||SUPPORT_EMAIL_DEFAULT).trim();
+  const open=listOpenMatches_();
+  let matchPlayers=[];
+  if(mode==="match") {
+    const matchId=clean_(f.matchId,80);
+    const m=open.find(x=>x.matchId===matchId);
+    if(!m) throw new Error("Scegli una partita aperta con posti liberi.");
+    const ids={}; m.playerIds.forEach(id=>{ids[id]=true;});
+    matchPlayers=players.filter(p=>ids[p.playerId]);
+  }
+  const manual=sources.manual?readRows_("MailList").map(r=>String(r.email||"")):[];
+  const aud=selectAudience_({players:players,matchPlayers:matchPlayers,manual:manual,sources:sources,mode:mode,max:Number(f.max)});
+  const listed=input.includeOpenMatches===true?open.slice(0,MAIL_MATCH_LIMIT).map(m=>({when:formatWhen_(m.date),venue:m.venue,free:4-m.count,link:appUrl?appUrl+"#match="+m.matchId:""})):null;
+  const subject=clean_(input.subject,120)||"Telespadel";
+  const body=buildEmailBody_({message:input.message,openMatches:listed,appUrl:appUrl,support:support});
+  const chunks=chunk_(aud.emails,MAIL_BATCH);
+  const notes=aud.notes.slice();
+  if(listed&&listed.length&&!appUrl) notes.push("Manca APP_URL nelle Proprietà script: l'email non contiene il link all'app.");
+  return {emails:aud.emails,chunks:chunks,subject:subject,body:body,support:support,notes:notes,needed:aud.emails.length+chunks.length,quota:MailApp.getRemainingDailyQuota()};
+}
+
+/** Open matches in the future with free places, soonest first. */
+function listOpenMatches_() {
+  const counts={}, ids={};
+  readRows_("Registrations").filter(r=>r.registrationId&&String(r.status)==="joined").forEach(function(r) {
+    const k=String(r.matchId); counts[k]=(counts[k]||0)+1; (ids[k]=ids[k]||[]).push(String(r.playerId));
+  });
+  return readRows_("Matches").filter(r=>r.matchId&&String(r.status||"open")==="open").map(function(r) {
+    const k=String(r.matchId);
+    return {matchId:k,date:new Date(r.dateTime),venue:String(r.venue||""),count:counts[k]||0,playerIds:ids[k]||[]};
+  }).filter(m=>!isNaN(m.date.getTime())&&m.date.getTime()>Date.now()&&m.count<4).sort((a,b)=>a.date-b.date);
+}
+
+/**
+ * Pure audience selection.
+ * mode "all": every chosen address. "incomplete": registered players with an incomplete profile.
+ * "match": registered players not yet in the match, best average partner score first, at most max of them.
+ * The manual list has no profile data, so it is used only with mode "all". Players who switched emails off are always excluded.
+ */
+function selectAudience_(o) {
+  const notes=[], seen={}, out=[], optedOut={};
+  o.players.forEach(function(p) { if(truthy_(p.emailOptOut)) optedOut[String(p.email).trim().toLowerCase()]=true; });
+  const add=function(raw) {
+    const e=String(raw||"").trim().toLowerCase();
+    if(!validEmail_(e)||seen[e]||optedOut[e]) return;
+    seen[e]=true; out.push(e);
+  };
+  const mode=o.mode||"all";
+  if(o.sources.registered) {
+    let list=o.players.filter(p=>truthy_(p.active)&&!truthy_(p.emailOptOut));
+    if(mode==="incomplete") list=list.filter(p=>!isComplete_(p));
+    if(mode==="match") {
+      const inMatch=o.matchPlayers||[], taken={};
+      inMatch.forEach(p=>{taken[p.playerId]=true;});
+      const ranked=list.filter(p=>!taken[p.playerId]).map(function(p) {
+        const s=inMatch.length?inMatch.reduce((t,q)=>t+pairScore_(p,q),0)/inMatch.length:50;
+        return {p:p,s:s};
+      }).sort((a,b)=>b.s-a.s||String(a.p.displayName).localeCompare(String(b.p.displayName)));
+      const max=Math.max(1,Math.min(100,Math.floor(o.max)||20));
+      list=ranked.slice(0,max).map(x=>x.p);
+    }
+    list.forEach(p=>add(p.email));
+  }
+  if(o.sources.manual) {
+    if(mode==="all") o.manual.forEach(add);
+    else notes.push("La lista manuale è inclusa solo con la scelta \"Tutti\".");
+  }
+  return {emails:out,notes:notes};
+}
+
+function buildEmailBody_(o) {
+  const parts=[clean_(o.message,2000)||"Ciao a tutti,"];
+  if(o.openMatches) {
+    if(o.openMatches.length) parts.push("Partite aperte:\n"+o.openMatches.map(m=>"• "+m.when+" · "+m.venue+" · "+(m.free===1?"1 posto libero":m.free+" posti liberi")+(m.link?"\n  "+m.link:"")).join("\n"));
+    else parts.push("Al momento non ci sono partite aperte.");
+  }
+  if(o.appUrl) parts.push("Entrate nell'app: "+o.appUrl);
+  parts.push("Per qualsiasi problema scrivete a "+o.support+".");
+  parts.push("La riservatezza delle vostre informazioni per noi è una cosa seria: la trattiamo con la massima attenzione.");
+  parts.push("Non volete più ricevere queste email? Rispondete a questo messaggio scrivendo STOP, oppure disattivate l'opzione email nel vostro profilo dell'app.");
+  return parts.join("\n\n");
+}
+
+function formatWhen_(d) {
+  const days=["dom","lun","mar","mer","gio","ven","sab"], months=["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"];
+  const pad=n=>(n<10?"0":"")+n;
+  return days[d.getDay()]+" "+d.getDate()+" "+months[d.getMonth()]+", "+pad(d.getHours())+":"+pad(d.getMinutes());
+}
+
+/* ---------- Compatibilità tra compagni ---------- */
+
+function isComplete_(p) { return GENDERS.indexOf(String(p.gender||""))>=0&&POSITIONS.indexOf(String(p.preferredSide||""))>=0; }
+function rank_(level) { return {"Bronze":1,"Silver":2,"Silver-Gold":3,"Gold":4,"Gold+":5}[level]||0; }
+/** Positions outside POSITIONS (older profiles) have no effect. */
+function pairModifier_(a,b) { return PAIR_MODIFIERS[[String(a||""),String(b||"")].sort().join("|")]||0; }
+/** Server-side score used to rank candidates for an open match. The personal feedback term of the browser score is not available here. */
+function pairScore_(a,b) {
+  const s=50+pairModifier_(a.preferredSide,b.preferredSide)+Math.max(-20,20-Math.abs(rank_(a.skillLevel)-rank_(b.skillLevel))*10);
+  return Math.max(0,Math.min(100,Math.round(s)));
+}
+
+function requireAdmin_(user) { if(!user.isAdmin) throw new Error("Funzione riservata agli amministratori."); }
+function validEmail_(e) { e=String(e||""); return e.length<=254&&/^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(e); }
+function parseEmails_(text) {
+  const valid=[], invalid=[], seen={};
+  String(text==null?"":text).split(/[\s,;]+/).forEach(function(raw) {
+    const e=raw.trim().toLowerCase(); if(!e) return;
+    if(!validEmail_(e)) { invalid.push(raw.slice(0,60)); return; }
+    if(!seen[e]) { seen[e]=true; valid.push(e); }
+  });
+  return {valid:valid,invalid:invalid};
+}
+function chunk_(arr,n) { const out=[]; for(let i=0;i<arr.length;i+=n) out.push(arr.slice(i,i+n)); return out; }
+
+/** Adds missing header cells (new columns at the end) to a sheet created by an older version. */
+function ensureHeaders_(sh,name) {
+  const want=HEADERS[name], have=sh.getLastColumn();
+  if(have>=want.length) return;
+  const first=sh.getRange(1,1,1,have).getDisplayValues()[0];
+  if(first.join("|")!==want.slice(0,have).join("|")) throw new Error("Intestazioni non compatibili nella scheda "+name+". Non sono state sovrascritte.");
+  if(sh.getMaxColumns()<want.length) sh.insertColumnsAfter(sh.getMaxColumns(),want.length-sh.getMaxColumns());
+  sh.getRange(1,have+1,1,want.length-have).setValues([want.slice(have)]);
 }
 
 /** Calendar events use the configured community calendar; no private feedback is written to Sheets. */
