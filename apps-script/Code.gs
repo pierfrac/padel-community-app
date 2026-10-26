@@ -5,7 +5,7 @@
  */
 const HEADERS = {
   Players: ["playerId","displayName","email","skillLevel","preferredSide","active","createdAt","updatedAt","photoUrl","gender","consentAt","consentVersion"],
-  Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId","lineup","court"],
+  Matches: ["matchId","dateTime","venue","createdBy","status","notes","createdAt","calendarEventId","lineup","court","type"],
   Registrations: ["registrationId","matchId","playerId","status","createdAt","partnerId"],
   Shares: ["shareId","matchId","token","label","createdBy","createdAt","openedAt","lastOpenAt","opens","devices","playerId","claimedAt","kind","responses"],
   Devices: ["deviceId","playerId","firstSeen","lastSeen"],
@@ -22,7 +22,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.15";
+const BACKEND_VERSION = "2026-10-26.16";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
@@ -32,6 +32,9 @@ const SESSION_DAYS = 30;
 const SESSION_PREFIX = "s1.";
 /** Default notice, written to the Settings sheet (row "disclaimer") by setupPadelCommunity. The admin edits the text there; the app and the invitations show whatever is in the sheet. */
 const DEFAULT_DISCLAIMER = "Questa app non usa in alcun modo strumenti aziendali e non è collegata con Telespazio.\nCertamente vi chiediamo di mantenere la community limitata a noi e ad eventuali amici e colleghi che volete coinvolgere per riempire i campi. Noi non saremo responsabili né dell'organizzazione né di eventuali disguidi verso i circoli o tra colleghi.";
+/** Match type: "any" = anybody, "mixed" = 2 men + 2 women, "same" = four of the same gender. Players whose gender is "other" (or guests, whose gender is unknown) fit every type. */
+const MATCH_TYPES = ["any","mixed","same"];
+const TYPE_LABELS = {mixed:"mista",same:"standard (stesso genere)"};
 const GENDERS = ["male","female","other"];
 const API_METHODS = ["getSettings","getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","startSession","endSession","setLineup","resendInvite","setCourt","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice"];
 
@@ -218,13 +221,13 @@ function getAppData(idToken) {
 }
 function appData_(user) {
   const players = readRows_("Players").filter(r => r.playerId && truthy_(r.active)).map(function(r) {
-    return {playerId:String(r.playerId),displayName:String(r.displayName || "Giocatore"),skillLevel:String(r.skillLevel || "Da definire"),preferredSide:String(r.preferredSide || "indifferent"),photoUrl:safePhoto_(r.photoUrl),active:true};
+    return {playerId:String(r.playerId),displayName:String(r.displayName || "Giocatore"),skillLevel:String(r.skillLevel || "Da definire"),preferredSide:String(r.preferredSide || "indifferent"),photoUrl:safePhoto_(r.photoUrl),gender:String(r.gender||""),active:true};
   });
   const registrations = readRows_("Registrations").filter(r => r.registrationId && String(r.status) === "joined").map(function(r) {
     return {registrationId:String(r.registrationId),matchId:String(r.matchId),playerId:String(r.playerId),status:String(r.status),partnerId:String(r.partnerId || "")};
   });
   const matches = readRows_("Matches").filter(r => r.matchId && String(r.status) !== "cancelled").map(function(r) {
-    return {matchId:String(r.matchId),dateTime:iso_(r.dateTime),venue:String(r.venue || ""),status:String(r.status || "open"),notes:String(r.notes || ""),court:String(r.court || ""),createdBy:String(r.createdBy || ""),lineup:publicLineup_(parseLineup_(r.lineup),user,r.createdBy),registeredCount:0};
+    return {matchId:String(r.matchId),dateTime:iso_(r.dateTime),venue:String(r.venue || ""),status:String(r.status || "open"),notes:String(r.notes || ""),court:String(r.court || ""),type:MATCH_TYPES.indexOf(String(r.type))>=0?String(r.type):"any",createdBy:String(r.createdBy || ""),lineup:publicLineup_(parseLineup_(r.lineup),user,r.createdBy),registeredCount:0};
   });
   const counts = {};
   registrations.forEach(r => counts[r.matchId]=(counts[r.matchId]||0)+1);
@@ -263,10 +266,10 @@ function saveProfile(idToken, input) {
 function createMatch(idToken,input) {
   const user=verifyUser_(idToken); input=input||{};
   const profile=requireProfile_(user);
-  const venue=clean_(input.venue,120), dateText=clean_(input.dateTime,80), notes=clean_(input.notes,500), court=clean_(input.court,10);
+  const venue=clean_(input.venue,120), dateText=clean_(input.dateTime,80), notes=clean_(input.notes,500), court=clean_(input.court,10), type=MATCH_TYPES.indexOf(String(input.type))>=0?String(input.type):"any";
   if(!venue||!dateText) throw new Error("Inserisci campo e data/ora.");
   const date=new Date(dateText); if(isNaN(date.getTime())||date.getTime()<Date.now()-60000) throw new Error("Scegli una data futura valida.");
-  const lineup=buildLineup_(input.lineup,user,profile,null,null);
+  const lineup=buildLineup_(input.lineup,user,profile,null,null,type);
   const id=Utilities.getUuid(), created=new Date();
   let eventId="";
   const calendarId=PropertiesService.getScriptProperties().getProperty("CALENDAR_ID");
@@ -279,10 +282,10 @@ function createMatch(idToken,input) {
       eventId=event.getId();
     } catch(err) { throw new Error("Partita non salvata: errore Calendar. "+err.message); }
   }
-  sheet_("Matches").appendRow([id,date,venue,user.playerId,"open",notes,created,eventId,JSON.stringify(lineup),court]);
+  sheet_("Matches").appendRow([id,date,venue,user.playerId,"open",notes,created,eventId,JSON.stringify(lineup),court,type]);
   sheet_("Registrations").appendRow([Utilities.getUuid(),id,user.playerId,"joined",created,""]);
-  sendInvites_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},profile.displayName,lineup.newInvites);
-  sendEmailInvites_({matchId:id,venue:venue+(court?" · campo "+court:""),date:date},profile.displayName,lineup.newEmailInvites);
+  sendInvites_({matchId:id,venue:venue+(court?" · campo "+court:"")+(TYPE_LABELS[type]?" · "+TYPE_LABELS[type]:""),date:date},profile.displayName,lineup.newInvites);
+  sendEmailInvites_({matchId:id,venue:venue+(court?" · campo "+court:"")+(TYPE_LABELS[type]?" · "+TYPE_LABELS[type]:""),date:date},profile.displayName,lineup.newEmailInvites);
   return {matchId:id,drafts:takeDrafts_(),mailWarning:mailWarning_(),message:calendarId?"Partita creata e aggiunta al calendario.":"Partita creata. Calendar non è ancora configurato."};
 }
 
@@ -304,9 +307,9 @@ function registerForMatch(idToken,input) {
     let slot=-1;
     if(lineup) {
       slot=lineup.findIndex(x=>x.playerId===user.playerId);
-      if(slot<0) { slot=lineup.findIndex(x=>x.email&&(x.email===user.email||(CURRENT_INVITE_TOKEN&&x.token===CURRENT_INVITE_TOKEN))); if(slot>=0) { approveEmail_(user.email); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:"",token:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); } }
-      if(slot<0) { slot=lineup.findIndex(x=>!x.playerId&&!x.email&&x.name&&sameName_(x.name,profile.displayName)); if(slot>=0) { lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:"",token:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); } }
-      if(slot<0) { slot=pickSlot_(lineup,String(profile.preferredSide||"")); if(slot<0) throw new Error("La partita è già completa."); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:"",token:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); }
+      if(slot<0) { slot=lineup.findIndex(x=>x.email&&(x.email===user.email||(CURRENT_INVITE_TOKEN&&x.token===CURRENT_INVITE_TOKEN))); if(slot>=0) { approveEmail_(user.email); checkJoin_(String(match.type||""),lineup,slot,String(profile.gender||"")); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:"",token:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); } }
+      if(slot<0) { slot=lineup.findIndex(x=>!x.playerId&&!x.email&&x.name&&sameName_(x.name,profile.displayName)); if(slot>=0) { checkJoin_(String(match.type||""),lineup,slot,String(profile.gender||"")); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:"",token:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); } }
+      if(slot<0) { slot=pickSlot_(lineup,String(profile.preferredSide||"")); if(slot<0) throw new Error("La partita è già completa."); checkJoin_(String(match.type||""),lineup,slot,String(profile.gender||"")); lineup[slot]={playerId:user.playerId,name:String(profile.displayName||""),invitedAt:"",reminded:false,email:"",token:""}; sheet_("Matches").getRange(match._row,9).setValue(JSON.stringify(lineup)); }
     } else if(active.length>=4) throw new Error("La partita è già completa.");
     sheet_("Registrations").appendRow([Utilities.getUuid(),matchId,user.playerId,"joined",new Date(),""]);
     return {message:"Iscrizione registrata."};
@@ -376,7 +379,7 @@ function resendInvite(idToken,input) {
 }
 
 /** Venue text for emails: adds the court number when known. */
-function venueLabel_(row) { const c=String(row.court||"").trim(); return String(row.venue)+(c?" · campo "+c:""); }
+function venueLabel_(row) { const c=String(row.court||"").trim(), t=TYPE_LABELS[String(row.type||"")]; return String(row.venue)+(c?" · campo "+c:"")+(t?" · "+t:""); }
 
 /** Organizer or admin sets or clears the court number (optional). */
 function setCourt(idToken,input) {
@@ -400,7 +403,7 @@ function setLineup(idToken,input) {
     if(!user.isAdmin&&String(row.createdBy)!==user.playerId) throw new Error("Solo chi ha proposto la partita può cambiare la formazione.");
     if(String(row.status)==="completed") throw new Error("La partita è già conclusa.");
     const joined=readRows_("Registrations").filter(r=>String(r.matchId)===matchId&&String(r.status)==="joined").map(r=>String(r.playerId));
-    const lineup=buildLineup_(input.lineup,{playerId:String(row.createdBy)},null,joined,parseLineup_(row.lineup));
+    const lineup=buildLineup_(input.lineup,{playerId:String(row.createdBy)},null,joined,parseLineup_(row.lineup),MATCH_TYPES.indexOf(String(row.type))>=0?String(row.type):"any");
     sheet_("Matches").getRange(row._row,9).setValue(JSON.stringify(lineup));
     const ownerRow=readRows_("Players").find(r=>String(r.playerId)===String(row.createdBy));
     sendInvites_({matchId:String(row.matchId),venue:venueLabel_(row),date:new Date(row.dateTime)},ownerRow?String(ownerRow.displayName):"L'organizzatore",lineup.newInvites.filter(id=>joined.indexOf(id)<0));
@@ -682,7 +685,7 @@ function parseLineup_(v) {
     return a.map(x=>({playerId:String((x&&x.playerId)||""),name:String((x&&x.name)||""),invitedAt:String((x&&x.invitedAt)||""),reminded:!!(x&&x.reminded),email:String((x&&x.email)||""),token:String((x&&x.token)||""),openedAt:String((x&&x.openedAt)||""),opens:Number((x&&x.opens)||0)})); } catch(e) { return null; }
 }
 /** Four slots: pair 1 right/left, pair 2 right/left. Members of the community are matched by playerId; free text names are guests. */
-function buildLineup_(raw,owner,ownerProfile,mustKeep,prev) {
+function buildLineup_(raw,owner,ownerProfile,mustKeep,prev,type) {
   const arr=Array.isArray(raw)?raw.slice(0,4):[];
   const players={}, byEmail={}; readRows_("Players").filter(r=>r.playerId&&truthy_(r.active)).forEach(r=>{ players[String(r.playerId)]=String(r.displayName||""); const em=String(r.email||"").trim().toLowerCase(); if(em) byEmail[em]=String(r.playerId); });
   const seen={}, seenEmail={}, out=[], newInvites=[], newEmailInvites=[];
@@ -705,9 +708,27 @@ function buildLineup_(raw,owner,ownerProfile,mustKeep,prev) {
     if(free<0) throw new Error("Chi organizza deve occupare uno dei 4 posti.");
     out[free]={playerId:owner.playerId,name:own,invitedAt:"",reminded:false,email:"",token:""};
   }
+  checkType_(type,out.map(x=>x.playerId?genderOfPlayer_(x.playerId):""));
   (mustKeep||[]).forEach(function(id){ if(!seen[id]&&id!==owner.playerId) throw new Error("Non puoi togliere dalla formazione chi è già iscritto: deve annullare lui."); });
   out.newInvites=newInvites; out.newEmailInvites=newEmailInvites;
   return out;
+}
+
+function genderOfPlayer_(pid) { const r=readRows_("Players").find(x=>String(x.playerId)===String(pid)); return r?String(r.gender||""):""; }
+/** genders = one entry per seat ("male", "female" or ""): rejects a lineup that cannot be a mixed / same-gender match. */
+function checkType_(type,genders) {
+  if(type!=="mixed"&&type!=="same") return;
+  const m=genders.filter(g=>g==="male").length, f=genders.filter(g=>g==="female").length;
+  if(type==="mixed"&&(m>2||f>2)) throw new Error("Partita mista: servono 2 uomini e 2 donne, al massimo (ora "+m+" uomini e "+f+" donne).");
+  if(type==="same"&&m>0&&f>0) throw new Error("Partita standard: devono giocare tutti dello stesso genere (ci sono sia uomini che donne).");
+}
+/** A person joins a free seat of a typed match: the seats already taken must leave room for their gender. */
+function checkJoin_(type,lineup,slot,gender) {
+  if((type!=="mixed"&&type!=="same")||(gender!=="male"&&gender!=="female")) return;
+  const others=lineup.map((x,i)=>i===slot||!x.playerId?"":genderOfPlayer_(x.playerId));
+  const m=others.filter(g=>g==="male").length, f=others.filter(g=>g==="female").length;
+  if(type==="mixed"&&((gender==="male"&&m>=2)||(gender==="female"&&f>=2))) throw new Error("Questa partita è mista (2 uomini e 2 donne): i posti per "+(gender==="male"?"gli uomini":"le donne")+" sono già occupati.");
+  if(type==="same"&&((gender==="male"&&f>0)||(gender==="female"&&m>0))) throw new Error("Questa partita è standard (tutti dello stesso genere) e c'è già chi gioca di un genere diverso dal tuo.");
 }
 
 /** Admin only (ADMIN_EMAILS): deletes all matches and registrations, optionally the player profiles too. Needs the confirmation word. */
