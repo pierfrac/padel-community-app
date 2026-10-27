@@ -22,7 +22,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-26.20";
+const BACKEND_VERSION = "2026-10-27.1";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
@@ -853,7 +853,10 @@ function sessionIdentity_(code) {
   try { const h=hashToken_(code); row=readRows_("Sessions").find(r=>String(r.tokenHash)===h); } catch(e) {}
   if(!row) throw new Error("Sessione non valida. Accedi di nuovo con Google.");
   if(new Date(row.expiresAt).getTime()<Date.now()) throw new Error("Sessione scaduta. Accedi di nuovo con Google.");
-  return {email:String(row.email),sub:String(row.sub),picture:String(row.picture||"")};
+  // The Google id is stored as text with a prefix: Sheets would turn a bare 21-digit number into a rounded number, and the profile would not be found.
+  const stored=String(row.sub||"");
+  if(stored.indexOf("google:")!==0) throw new Error("Sessione non valida. Accedi di nuovo con Google.");
+  return {email:String(row.email),sub:stored.slice(7),picture:String(row.picture||"")};
 }
 /** Called right after a Google login: returns a code the app keeps for SESSION_DAYS days. Only a fresh Google token can open a session. */
 function startSession(idToken) {
@@ -868,7 +871,7 @@ function startSession(idToken) {
     drop.forEach(n=>sh.deleteRows(n,1));
     const code=SESSION_PREFIX+Utilities.getUuid().replace(/-/g,"")+Utilities.getUuid().replace(/-/g,"");
     const exp=new Date(now+SESSION_DAYS*24*60*60*1000);
-    sh.appendRow([hashToken_(code),ident.email,ident.sub,ident.picture,new Date(now),exp]);
+    sh.appendRow([hashToken_(code),ident.email,"google:"+ident.sub,ident.picture,new Date(now),exp]);
     // An address admitted through an invitation keeps its access for the next logins too.
     try { if((PropertiesService.getScriptProperties().getProperty("ALLOWED_EMAILS")||"").trim()) approveEmail_(ident.email); } catch(e) {}
     return {session:code,expiresAt:exp.toISOString(),days:SESSION_DAYS};
