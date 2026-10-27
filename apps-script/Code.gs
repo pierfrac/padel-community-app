@@ -22,7 +22,7 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true,app:"Padel Community",version:BACKEND_VERSION})).setMimeType(ContentService.MimeType.JSON);
 }
 
-const BACKEND_VERSION = "2026-10-27.1";
+const BACKEND_VERSION = "2026-10-27.2";
 /** Version of the privacy notice shown in the app: bump it when the text changes to ask for consent again. */
 const CONSENT_VERSION = "2026-10-26";
 /** Name of this community; override with the COMMUNITY_NAME script property when another community gets its own backend. */
@@ -36,8 +36,8 @@ const DEFAULT_DISCLAIMER = "Questa app non usa in alcun modo strumenti aziendali
 const MATCH_TYPES = ["any","mixed","same"];
 const TYPE_LABELS = {mixed:"mista (2 uomini + 2 donne)",same:"standard (4 uomini o 4 donne)"};
 const GENDERS = ["male","female","other"];
-/** Posizione: right = Destro (gioca a destra), left = Sinistro (gioca a sinistra), lefty = Mancino (mancino: gioca sempre a destra). "indifferent" resta solo nei profili vecchi: conta come profilo da completare. */
-const SIDES = ["right","left","lefty"];
+/** Posizione: right = Destro (gioca a destra), left = Sinistro (gioca a sinistra), lefty = Mancino (mancino: gioca sempre a destra). "indifferent" = Indifferente: può giocare sia a destra sia a sinistra (va bene in ogni posto). */
+const SIDES = ["right","left","lefty","indifferent"];
 function seatSide_(side) { return side==="lefty"?"right":(side==="left"?"left":(side==="right"?"right":"")); }
 const API_METHODS = ["getSettings","getAppData","saveProfile","createMatch","registerForMatch","cancelRegistration","completeMatch","cancelMatch","setPartner","startSession","endSession","setLineup","resendInvite","setCourt","resetAllData","inviteToCommunity","createCommunityLink","lookupEmail","createShareLink","trackOpen","respondToLink","forgetDevice","prepareBroadcast","saveMailList"];
 
@@ -256,7 +256,7 @@ function saveProfile(idToken, input) {
   const allowedLevels = ["Bronze","Silver","Silver-Gold","Gold","Gold+"];
   const gender = clean_(input.gender,10);
   if (!name || allowedLevels.indexOf(level)<0 || SIDES.indexOf(side)<0)
-    throw new Error("Inserisci nome, livello e posizione (Destro, Sinistro o Mancino).");
+    throw new Error("Inserisci nome, livello e posizione (Destro, Sinistro, Mancino o Indifferente).");
   if (GENDERS.indexOf(gender)<0) throw new Error("Scegli maschio, femmina o altro.");
   const sh=sheet_("Players"), rows=readRows_("Players");
   const existing=rows.find(r=>String(r.playerId)===user.playerId);
@@ -1005,7 +1005,7 @@ function buildBroadcastBody_(opts) {
     lines.push(""); lines.push("Partite aperte, c'è ancora posto:");
     opts.matches.forEach(function(m){ lines.push("• " + whenText_(m.date) + " · " + m.venue + " · " + m.free + (m.free === 1 ? " posto libero" : " posti liberi") + "\n  " + appLink_({matchId:m.matchId, venue:m.venue, date:m.date}, "")); });
   } else if (opts.includeOpen) { lines.push(""); lines.push("Al momento non ci sono partite aperte con posti liberi."); }
-  if (opts.askProfile) { lines.push(""); lines.push("Ci mancano ancora due informazioni nel tuo profilo (sesso e posizione: Destro, Sinistro o Mancino). Servono per proporti i compagni più compatibili: bastano pochi secondi nell'app, scheda Profilo."); }
+  if (opts.askProfile) { lines.push(""); lines.push("Ci mancano ancora due informazioni nel tuo profilo (sesso e posizione: Destro, Sinistro, Mancino o Indifferente). Servono per proporti i compagni più compatibili: bastano pochi secondi nell'app, scheda Profilo."); }
   lines.push(""); lines.push("Apri l'app: " + (PropertiesService.getScriptProperties().getProperty("APP_URL") || DEFAULT_APP_URL));
   lines.push(""); lines.push("Per qualsiasi problema scrivi a " + supportEmail_() + ".");
   lines.push("Teniamo moltissimo alla riservatezza delle tue informazioni: le usiamo solo per organizzare le partite e non le condividiamo con nessuno.");
